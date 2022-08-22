@@ -77,6 +77,7 @@ class AscendEX(Feed):
                       Decimal(trade['q']),
                       Decimal(trade['p']),
                       self.timestamp_normalize(trade['ts']),
+                      id=str(trade['seqnum']),
                       raw=trade)
             await self.callback(TRADES, t, timestamp)
 

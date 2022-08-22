@@ -154,7 +154,7 @@ class KuCoin(Feed):
             Decimal(msg['data']['size']),
             Decimal(msg['data']['price']),
             float(msg['data']['time']) / 1000000000,
-            id=msg['data']['tradeId'],
+            id=str(int(msg['data']['tradeId'], 16)),
             raw=msg
         )
         await self.callback(TRADES, t, timestamp)
