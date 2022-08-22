@@ -56,7 +56,7 @@ class TradeQuest(QuestCallback, BackendCallback):
         received_timestamp_int = int(data["receipt_timestamp"] * 1_000_000)
         timestamp_int = int(timestamp * 1_000_000_000) if timestamp is not None else received_timestamp_int * 1000
         update = f'{self.key}-{data["exchange"]},symbol={data["symbol"]},side={data["side"]},type={data["type"]} ' \
-                 f'price={data["price"]},amount={data["amount"]},id={data["id"]}i,receipt_timestamp={received_timestamp_int}t {timestamp_int}'
+                 f'price={data["price"]},amount={data["amount"]},id={data["id"]},receipt_timestamp={received_timestamp_int}t {timestamp_int}'
         await self.queue.put(update)
 
 
