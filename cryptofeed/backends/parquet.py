@@ -27,7 +27,6 @@ class ParquetCallback(BackendQueue):
                         # TODO upload to s3
                         dumper = self._dumpers[data['symbol']] = Dumper(data['symbol'], self.key)
                     del data['symbol']
-                    # data['until_end_transaction'] = len(updates) - i - 1
                     dumper.dump(data)
             if not updates:
                 break
@@ -55,6 +54,7 @@ class TradeParquet(ParquetCallback, BackendCallback):
         if data['type'] is None:
             del data['type']
         del data['exchange']
+        # TODO trade id can be str or int on exchanges and strs got converted to float
         await self.queue.put(self._format_timestamps(data))
 
 class FundingParquet(ParquetCallback, BackendCallback):

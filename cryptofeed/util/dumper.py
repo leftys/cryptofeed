@@ -59,6 +59,8 @@ class Dumper:
 						t = pa.int64()
 					elif type(value) == float:
 						t = pa.float64()
+					elif type(value) == str and self._is_int(value):
+						t = pa.int64()
 					elif type(value) == str and self._is_float(value):
 						t = pa.float64()
 					elif type(value) == str:
@@ -172,5 +174,13 @@ class Dumper:
 		try:
 			float(val)
 			return True
+		except ValueError:
+			return False
+
+	@staticmethod
+	def _is_int(val):
+		try:
+			f = float(val)
+			return f == int(f)
 		except ValueError:
 			return False
