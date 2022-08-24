@@ -1,4 +1,5 @@
 import logging
+import collections
 
 from cryptofeed.backends.backend import BackendCallback, BackendQueue
 from cryptofeed.util.dumper import Dumper
@@ -9,24 +10,27 @@ LOG = logging.getLogger('feedhandler')
 
 class ParquetCallback(BackendQueue):
     def __init__(self, path: str, key=None, **kwargs):
+        self.path = path
         self.key = key if key else self.default_key
         self.numeric_type = float
         self.none_to = None
         self.running = True
-        self._dumpers: dict[str, Dumper] = {}
+        self._dumpers: dict[str, dict[str, Dumper]] = collections.defaultdict(dict)
+        ''' keys: exchange, symbol '''
 
     async def writer(self):
         while self.running:
             async with self.read_queue() as updates:
                 # print(self.key, len(updates))
-                for i, data in enumerate(updates):
+                for data in updates:
                     try:
-                        dumper = self._dumpers[data['symbol']]
+                        dumper = self._dumpers[data['exchange']][data['symbol']]
                     except KeyError:
                         # TODO data['exchange']?
                         # TODO upload to s3
-                        dumper = self._dumpers[data['symbol']] = Dumper(data['symbol'], self.key)
+                        dumper = self._dumpers[data['exchange']][data['symbol']] = Dumper(self.path, data['symbol'], self.key, data['exchange'])
                     del data['symbol']
+                    del data['exchange']
                     dumper.dump(data)
             if not updates:
                 break
@@ -41,8 +45,9 @@ class ParquetCallback(BackendQueue):
         await self.queue.put(self._format_timestamps(data))
 
     async def stop(self):
-        for dumper in self._dumpers.values():
-            dumper.close()
+        for exchange_dumpers in self._dumpers.values():
+            for dumper in exchange_dumpers.values():
+                dumper.close()
         await super().stop()
 
 
@@ -53,7 +58,6 @@ class TradeParquet(ParquetCallback, BackendCallback):
         # Parquet dumper cannot handle Nones
         if data['type'] is None:
             del data['type']
-        del data['exchange']
         # TODO trade id can be str or int on exchanges and strs got converted to float
         await self.queue.put(self._format_timestamps(data))
 
@@ -70,13 +74,20 @@ class BookParquet(ParquetCallback):
     async def __call__(self, book, receipt_timestamp: float):
         data = {}
         data['symbol'] = book.symbol
+        data['exchange'] = book.exchange
         data['timestamp'] = int(book.timestamp * 1_000_000_000) if book.timestamp else 0
         data["receipt_timestamp"] = int(receipt_timestamp * 1_000_000_000)
         for side_name, side in (('bid', book.book.bids), ('ask', book.book.asks)):
             for i in range(book.book.max_depth):
-                level = side.index(i)
-                data[f'{side_name}_{i}_price'] = float(level[0])
-                data[f'{side_name}_{i}_size'] = float(level[1])
+                try:
+                    # TODO: this is slow. update order-book library, cythonize this loop, or both
+                    level = side.index(i)
+                except:
+                    data[f'{side_name}_{i}_price'] = float('nan')
+                    data[f'{side_name}_{i}_size'] = float('nan')
+                else:
+                    data[f'{side_name}_{i}_price'] = float(level[0])
+                    data[f'{side_name}_{i}_size'] = float(level[1])
         # print(book.exchange, book.delta)
         await self.queue.put(data)
 
@@ -89,9 +100,10 @@ class BookDeltaParquet(ParquetCallback):
     async def __call__(self, book, receipt_timestamp: float):
         data = {}
         data['symbol'] = book.symbol
+        data['exchange'] = book.exchange
         data['timestamp'] = int(book.timestamp * 1_000_000_000) if book.timestamp else 0
         data["receipt_timestamp"] = int(receipt_timestamp * 1_000_000_000)
-        for side_name, side in (('bid', book.book.bids), ('ask', book.book.asks)):
+        for side_name in ('bid', 'ask'):
             for update in book.delta[side_name]:
                 data[f'{side_name}_price'] = float(update[0])
                 data[f'{side_name}_size'] = float(update[1])

@@ -16,19 +16,22 @@ class Dumper:
 	'''
 	Dump flat dictionaries with fixed set of keys into binary parquet file.
 
-	Keeps dataframe buffer of by-default 1_000 rows and appends the mto open parquet file every time the buffer is full.
+	Keeps dataframe buffer of by-default 1_000 rows and appends the to open parquet file every time the buffer is full.
 
-	In case the file exists at open file, reads the file and prepends those existing data to a new file, as parquet
+	In case the file exists at open time, reads the file and prepends those existing data to a new file, as parquet
 	format doesn't supports appending to already finished files.
 
 	Also parquet doesn't support flushing and reading unfinished file, so we have to exist cleanly and call `close()`
 	for the resulting file to be readable.
 	'''
-	memory_pool = pa.mimalloc_memory_pool()
+	memory_pool = None
 
-	def __init__(self, symbol: str, event_type: str, buffer_len: int = 500) -> None:
+	# TODO: remove path (s3)
+	def __init__(self, path: str, symbol: str, event_type: str, exchange: str, buffer_len: int = 500) -> None:
+		self.path = path
 		self.symbol = symbol
 		self.event_type = event_type
+		self.exchange = exchange
 		self._store: Optional[pq.ParquetWriter] = None
 		self._store_date = datetime.date.today()
 		self._column_data: Dict[str, Any] = {}
@@ -40,6 +43,8 @@ class Dumper:
 		self._terminating = False
 		self._logger = logging.getLogger(f'Dumper({self.symbol}@{self.event_type})')
 		self._logger.setLevel(logging.DEBUG)
+		if Dumper.memory_pool is None:
+			Dumper.memory_pool = pa.mimalloc_memory_pool()
 
 	def dump(self, msg: Dict) -> None:
 		date = datetime.date.today()
@@ -94,9 +99,11 @@ class Dumper:
 			self._store = None
 
 		self._store_date = datetime.date.today()
-		today_date_dir = self._store_date.strftime('%Y-%m-%d')
-		today_file_name = today_date_dir + '/' + self.symbol + '@' + self.event_type + '.parquet'
-		os.makedirs(today_date_dir, exist_ok = True)
+		today_date_str = self._store_date.strftime('%Y-%m-%d')
+		# today_file_name = today_date_dir + '/' + self.symbol + '@' + self.event_type + '.parquet'
+		today_dir = f'data/{self.event_type}/exchange={self.exchange}/symbol={self.symbol}/dt={today_date_str}'
+		today_file_name = f'{today_dir}/1.snappy.parquet'
+		os.makedirs(today_dir, exist_ok = True)
 
 		original_table: Optional[pa.Table] = None
 		if os.path.exists(today_file_name):
@@ -108,16 +115,17 @@ class Dumper:
 			except Exception as ex:
 				self._logger.warning('Cannot append to the existing file! %s', ex)
 
-		self._logger.debug(f'Re-opening {today_file_name}')
+		self._logger.debug(f'Opening {today_file_name}')
 		self._schema = self._update_store_metadata(self._schema, existed = original_table is not None)
 		self._store = pq.ParquetWriter(
 			where = today_file_name,
 			schema = self._schema,
-			compression = 'snappy',
+			# compression = 'brotli',
 			# compression_level = 6,
+			compression = 'snappy',
 			version = '2.6',
 			data_page_version = '2.0',
-			memory_pool = self.memory_pool,
+			memory_pool = Dumper.memory_pool,
 			# data_page_size = 256 * 1024,
 		)
 
@@ -136,10 +144,12 @@ class Dumper:
 		custom_metadata = {
 			b'date': self._store_date.isoformat().encode('ascii'),
 			b'contains_gaps': b'Yes' if existed else b'No',
+			b'symbol': self.symbol.encode('ascii'),
+			b'event_type': self.event_type.encode('ascii'),
+			b'exchange': self.exchange.encode('ascii'),
 		}
 		merged_metadata = {**(schema.metadata or {}), **custom_metadata}
 		return schema.with_metadata(merged_metadata)
-		# return pa_table.replace_schema_metadata(merged_metadata)
 
 	def close(self) -> None:
 		self._logger.debug(f'Closing {self.symbol}@{self.event_type}')
@@ -163,10 +173,10 @@ class Dumper:
 			self._buffer_position = 0
 			self._column_data.clear()
 			self._store.write_table(pa_table, row_group_size = self._row_group_size)
-		if random.random() > 0.99:
-			del pa_table
+		if random.random() > 0.99: # TODO
 			# Trigger GC after 1% flushes to better fit into memory
 			self._logger.debug('GC')
+			del pa_table
 			gc.collect()
 
 	@staticmethod
