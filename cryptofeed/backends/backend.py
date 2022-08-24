@@ -34,6 +34,7 @@ class BackendQueue:
             self.worker.join()
         else:
             await self.queue.put(SHUTDOWN_SENTINEL)
+            await self.worker
         self.running = False
 
     @staticmethod
