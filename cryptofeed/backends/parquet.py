@@ -77,6 +77,25 @@ class BookParquet(ParquetCallback):
                 level = side.index(i)
                 data[f'{side_name}_{i}_price'] = float(level[0])
                 data[f'{side_name}_{i}_size'] = float(level[1])
+        # print(book.exchange, book.delta)
+        await self.queue.put(data)
+
+class BookDeltaParquet(ParquetCallback):
+    default_key = 'book-delta'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    async def __call__(self, book, receipt_timestamp: float):
+        data = {}
+        data['symbol'] = book.symbol
+        data['timestamp'] = int(book.timestamp * 1_000_000_000) if book.timestamp else 0
+        data["receipt_timestamp"] = int(receipt_timestamp * 1_000_000_000)
+        for side_name, side in (('bid', book.book.bids), ('ask', book.book.asks)):
+            for update in book.delta[side_name]:
+                data[f'{side_name}_price'] = float(update[0])
+                data[f'{side_name}_size'] = float(update[1])
+        print(book.exchange, book.delta)
         await self.queue.put(data)
 
 
