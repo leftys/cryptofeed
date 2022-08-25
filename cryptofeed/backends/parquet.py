@@ -72,11 +72,13 @@ class BookParquet(ParquetCallback):
         super().__init__(*args, **kwargs)
 
     async def __call__(self, book, receipt_timestamp: float):
+        # TODO only save every 100ms or snapshot_interval or so?
         data = {}
         data['symbol'] = book.symbol
         data['exchange'] = book.exchange
         data['timestamp'] = int(book.timestamp * 1_000_000_000) if book.timestamp else 0
         data["receipt_timestamp"] = int(receipt_timestamp * 1_000_000_000)
+        data['sequence_number'] = book.sequence_number
         for side_name, side in (('bid', book.book.bids), ('ask', book.book.asks)):
             for i in range(book.book.max_depth):
                 try:
@@ -103,6 +105,7 @@ class BookDeltaParquet(ParquetCallback):
         data['exchange'] = book.exchange
         data['timestamp'] = int(book.timestamp * 1_000_000_000) if book.timestamp else 0
         data["receipt_timestamp"] = int(receipt_timestamp * 1_000_000_000)
+        data['sequence_number'] = book.sequence_number
         for side_name in ('bid', 'ask'):
             for update in book.delta[side_name]:
                 data[f'{side_name}_price'] = float(update[0])
