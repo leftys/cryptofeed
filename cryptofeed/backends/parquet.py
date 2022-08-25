@@ -68,8 +68,9 @@ class FundingParquet(ParquetCallback, BackendCallback):
 class BookParquet(ParquetCallback):
     default_key = 'book'
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, max_depth = 10, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.max_depth = max_depth
 
     async def __call__(self, book, receipt_timestamp: float):
         # TODO only save every 100ms or snapshot_interval or so?
@@ -81,9 +82,8 @@ class BookParquet(ParquetCallback):
         data['sequence_number'] = book.sequence_number
         missing = 0
         level = None
-        assert book.book.max_depth > 0
         for side_name, side in (('bid', book.book.bids), ('ask', book.book.asks)):
-            for i in range(book.book.max_depth):
+            for i in range(self.max_depth):
                 try:
                     # TODO: this is slow. update order-book library, cythonize this loop, or both
                     level = side.index(i)
