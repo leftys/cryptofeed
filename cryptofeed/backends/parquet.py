@@ -84,7 +84,7 @@ class BookParquet(ParquetCallback):
                 try:
                     # TODO: this is slow. update order-book library, cythonize this loop, or both
                     level = side.index(i)
-                except KeyError:
+                except:
                     data[f'{side_name}_{i}_price'] = float('nan')
                     data[f'{side_name}_{i}_size'] = float('nan')
                 else:
