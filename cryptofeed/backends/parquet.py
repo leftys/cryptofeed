@@ -81,6 +81,7 @@ class BookParquet(ParquetCallback):
         data['sequence_number'] = book.sequence_number
         missing = 0
         level = None
+        assert book.book.max_depth > 0
         for side_name, side in (('bid', book.book.bids), ('ask', book.book.asks)):
             for i in range(book.book.max_depth):
                 try:
