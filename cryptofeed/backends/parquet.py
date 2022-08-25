@@ -79,6 +79,8 @@ class BookParquet(ParquetCallback):
         data['timestamp'] = int(book.timestamp * 1_000_000_000) if book.timestamp else 0
         data["receipt_timestamp"] = int(receipt_timestamp * 1_000_000_000)
         data['sequence_number'] = book.sequence_number
+        missing = 0
+        level = None
         for side_name, side in (('bid', book.book.bids), ('ask', book.book.asks)):
             for i in range(book.book.max_depth):
                 try:
@@ -87,9 +89,12 @@ class BookParquet(ParquetCallback):
                 except:
                     data[f'{side_name}_{i}_price'] = float('nan')
                     data[f'{side_name}_{i}_size'] = float('nan')
+                    missing += 1
                 else:
                     data[f'{side_name}_{i}_price'] = float(level[0])
                     data[f'{side_name}_{i}_size'] = float(level[1])
+        if missing:
+            LOG.warning('Incomplete order book %s, missing %d', book.symbol, missing)
         # print(book.exchange, book.delta)
         await self.queue.put(data)
 
