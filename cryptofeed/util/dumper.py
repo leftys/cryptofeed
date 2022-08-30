@@ -41,8 +41,9 @@ class Dumper:
 		self._row_group_size = buffer_len
 		self._data_lock = threading.Lock()
 		self._terminating = False
-		self._logger = logging.getLogger(f'Dumper({self.symbol}@{self.event_type})')
-		self._logger.setLevel(logging.DEBUG)
+		# self._logger = logging.getLogger(f'Dumper({self.symbol}@{self.event_type})')
+		self._logger = logging.getLogger('feedhandler')
+		# self._logger.setLevel(logging.DEBUG)
 		if Dumper.memory_pool is None:
 			Dumper.memory_pool = pa.mimalloc_memory_pool()
 
@@ -113,7 +114,7 @@ class Dumper:
 				original_file = pq.ParquetFile(old_file_name)
 				original_table: pa.Table = original_file.read_row_group(0)
 			except Exception as ex:
-				self._logger.warning('Cannot append to the existing file! %s', ex)
+				self._logger.warning(f'Cannot append to the existing file for dumper = {self.symbol}@{self.event_type}! Ex = %s', ex)
 
 		self._logger.debug(f'Opening {today_file_name}')
 		self._schema = self._update_store_metadata(self._schema, existed = original_table is not None)
