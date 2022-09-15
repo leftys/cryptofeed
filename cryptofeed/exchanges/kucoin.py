@@ -5,6 +5,7 @@ Please see the LICENSE file for the terms and conditions
 associated with this software.
 '''
 from decimal import Decimal
+import sys
 import logging
 import time
 from typing import Dict, Tuple
@@ -154,7 +155,8 @@ class KuCoin(Feed):
             Decimal(msg['data']['size']),
             Decimal(msg['data']['price']),
             float(msg['data']['time']) / 1000000000,
-            id=str(int(msg['data']['tradeId'], 16)),
+            # Module the trade ids to fit into int64
+            id=str(int(msg['data']['tradeId'], 16) % sys.maxsize),
             raw=msg
         )
         await self.callback(TRADES, t, timestamp)

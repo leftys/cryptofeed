@@ -67,6 +67,8 @@ class Dumper:
 						t = pa.float64()
 					elif type(value) == str and self._is_int(value):
 						t = pa.int64()
+					elif type(value) == str and self._is_hex(value):
+						t = pa.binary(len(value))
 					elif type(value) == str and self._is_float(value):
 						t = pa.float64()
 					elif type(value) == str:
@@ -193,5 +195,15 @@ class Dumper:
 		try:
 			f = float(val)
 			return f == int(f)
+		except ValueError:
+			return False
+
+	@staticmethod
+	def _is_hex(val):
+		if len(val) < 8:
+			return False
+		try:
+			f = int(val, 16)
+			return True
 		except ValueError:
 			return False
