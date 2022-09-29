@@ -24,7 +24,6 @@ class Dumper:
 	Also parquet doesn't support flushing and reading unfinished file, so we have to exist cleanly and call `close()`
 	for the resulting file to be readable.
 	'''
-	memory_pool = None
 
 	# TODO: remove path (s3)
 	def __init__(self, path: str, symbol: str, event_type: str, exchange: str, buffer_len: int = 500) -> None:
@@ -41,11 +40,9 @@ class Dumper:
 		self._row_group_size = buffer_len
 		self._data_lock = threading.Lock()
 		self._terminating = False
+		# Custom loggers dont work due to some bug in cryptofeed
 		# self._logger = logging.getLogger(f'Dumper({self.symbol}@{self.event_type})')
 		self._logger = logging.getLogger('feedhandler')
-		# self._logger.setLevel(logging.DEBUG)
-		if Dumper.memory_pool is None:
-			Dumper.memory_pool = pa.mimalloc_memory_pool()
 
 	def dump(self, msg: Dict) -> None:
 		date = datetime.date.today()
@@ -79,6 +76,7 @@ class Dumper:
 						raise TypeError('Unknown data type', value, type(value), msg)
 					schema_fields.append(pa.field(name, t))
 				self._schema = pa.schema(schema_fields)
+				# self._logger.info('Schema = %s', self._schema)
 
 			for i, (key, value) in enumerate(msg.items()):
 				if type(value) == str and self._is_float(value):
@@ -114,7 +112,7 @@ class Dumper:
 				old_file_name = today_file_name + '.bak'
 				os.rename(today_file_name, old_file_name)
 				original_file = pq.ParquetFile(old_file_name)
-				original_table: pa.Table = original_file.read_row_group(0)
+				original_table: pa.Table = original_file.read_row_group(i = 0, use_threads = False)
 			except Exception as ex:
 				self._logger.warning(f'Cannot append to the existing file for dumper = {self.symbol}@{self.event_type}! Ex = %s', ex)
 
@@ -128,7 +126,6 @@ class Dumper:
 			compression = 'snappy',
 			version = '2.6',
 			data_page_version = '2.0',
-			memory_pool = Dumper.memory_pool,
 			# data_page_size = 256 * 1024,
 		)
 
