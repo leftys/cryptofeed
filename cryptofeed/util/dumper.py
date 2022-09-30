@@ -119,9 +119,10 @@ class Dumper:
 		self._logger.debug(f'Opening {today_file_name}')
 		self._schema = self._update_store_metadata(self._schema, existed = original_table is not None)
 		page_size_guess = self.buffer_max_len * (len(self._schema.names) + 10) * 8
-		actual_table_size = original_table.nbytes
-		self._logger.info('Page size guess = %d, actual table size = %d', page_size_guess, actual_table_size)
-		page_size_guess = max(page_size_guess, actual_table_size)
+		if original_table: 
+			actual_table_size = original_table.nbytes
+			self._logger.info('Page size guess = %d, actual table size = %d', page_size_guess, actual_table_size)
+			page_size_guess = max(page_size_guess, actual_table_size)
 		self._store = pq.ParquetWriter(
 			where = today_file_name,
 			schema = self._schema,
