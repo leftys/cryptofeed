@@ -118,6 +118,10 @@ class Dumper:
 
 		self._logger.debug(f'Opening {today_file_name}')
 		self._schema = self._update_store_metadata(self._schema, existed = original_table is not None)
+		page_size_guess = self.buffer_max_len * (len(self._schema.names) + 10) * 8
+		actual_table_size = original_table.nbytes
+		self._logger.info('Page size guess = %d, actual table size = %d', page_size_guess, actual_table_size)
+		page_size_guess = max(page_size_guess, actual_table_size)
 		self._store = pq.ParquetWriter(
 			where = today_file_name,
 			schema = self._schema,
@@ -126,10 +130,16 @@ class Dumper:
 			compression = 'snappy',
 			version = '2.6',
 			data_page_version = '2.0',
-			# data_page_size = 256 * 1024,
+			write_batch_size = self.buffer_max_len,
+			data_page_size = page_size_guess,
+			dictionary_pagesize_limit = page_size_guess,
 		)
+		pool = pa.default_memory_pool()
+		pool.release_unused()
+		self._logger.info('Allocated = %d %d %d',pool.bytes_allocated(), pool.max_memory(), pa.total_allocated_bytes())
 
 		if original_table is not None:
+			del original_table
 			for i in range(0, original_file.num_row_groups):
 				original_table = original_file.read_row_group(i, use_threads = False)
 				self._store.write_table(original_table, row_group_size = self._row_group_size)
