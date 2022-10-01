@@ -1,6 +1,7 @@
 from typing import Dict, Optional, Any
 
 import datetime
+import time
 import os
 import os.path
 import threading
@@ -26,7 +27,7 @@ class Dumper:
 	'''
 
 	# TODO: remove path (s3)
-	def __init__(self, path: str, symbol: str, event_type: str, exchange: str, buffer_len: int = 500) -> None:
+	def __init__(self, path: str, symbol: str, event_type: str, exchange: str, buffer_len: int = 0) -> None:
 		self.path = path
 		self.symbol = symbol
 		self.event_type = event_type
@@ -35,14 +36,15 @@ class Dumper:
 		self._store_date = datetime.date.today()
 		self._column_data: Dict[str, Any] = {}
 		self._schema: Optional[pa.Schema] = None
-		self.buffer_max_len = buffer_len
 		self._buffer_position = 0
-		self._row_group_size = buffer_len
+		self.buffer_max_len = buffer_len or 500
+		self._automatically_set_buffer_len = (buffer_len == 0)
 		self._data_lock = threading.Lock()
 		self._terminating = False
 		# Custom loggers dont work due to some bug in cryptofeed
 		# self._logger = logging.getLogger(f'Dumper({self.symbol}@{self.event_type})')
 		self._logger = logging.getLogger('feedhandler')
+		self._dumping_start_time = 0
 
 	def dump(self, msg: Dict) -> None:
 		date = datetime.date.today()
@@ -50,6 +52,7 @@ class Dumper:
 			self._flush()
 			self._store.close()
 			self._store = None
+			self._dumping_start_time = time.time()
 
 		with self._data_lock:
 			if not self._column_data:
@@ -85,8 +88,29 @@ class Dumper:
 
 			self._buffer_position += 1
 
+		if self._store is None and self._automatically_set_buffer_len and self._buffer_position % 50 == 0:
+			time_now = time.time()
+			since_start = time_now - self._dumping_start_time
+			messages_per_second = self._buffer_position / since_start
+			if messages_per_second < 0.1:
+				self._set_buffer_max_len(50)
+			if messages_per_second < 0.5:
+				self._set_buffer_max_len(100)
+			if messages_per_second > 10:
+				self._set_buffer_max_len(1000)
+			if messages_per_second > 30:
+				self._set_buffer_max_len(2000)
+			else:
+				self._set_buffer_max_len(500)
+
 		if self._buffer_position == self.buffer_max_len:
 			self._flush()
+
+	def _set_buffer_max_len(self, new_len: int) -> None:
+		if new_len != self._set_buffer_max_len:
+			if new_len >= self._buffer_position:
+				self._logger.info('Setting buffer max len = %d', new_len)
+				self.buffer_max_len = new_len
 
 	def _reopen(self) -> None:
 		'''
@@ -119,7 +143,7 @@ class Dumper:
 		self._logger.debug(f'Opening {today_file_name}')
 		self._schema = self._update_store_metadata(self._schema, existed = original_table is not None)
 		page_size_guess = self.buffer_max_len * (len(self._schema.names) + 10) * 8
-		if original_table: 
+		if original_table:
 			actual_table_size = original_table.nbytes
 			self._logger.info('Page size guess = %d, actual table size = %d', page_size_guess, actual_table_size)
 			page_size_guess = max(page_size_guess, actual_table_size)
@@ -143,7 +167,7 @@ class Dumper:
 			del original_table
 			for i in range(0, original_file.num_row_groups):
 				original_table = original_file.read_row_group(i, use_threads = False)
-				self._store.write_table(original_table, row_group_size = self._row_group_size)
+				self._store.write_table(original_table, row_group_size = self.buffer_max_len)
 				del original_table
 			if random.random() > 0.9:
 				# Trigger GC after 10% re-opens to better fit into memory
@@ -183,7 +207,7 @@ class Dumper:
 			pa_table = pa.Table.from_pydict(self._column_data, schema = self._schema)
 			self._buffer_position = 0
 			self._column_data.clear()
-			self._store.write_table(pa_table, row_group_size = self._row_group_size)
+			self._store.write_table(pa_table, row_group_size = self.buffer_max_len)
 		if random.random() > 0.99: # TODO
 			# Trigger GC after 1% flushes to better fit into memory
 			self._logger.debug('GC')
