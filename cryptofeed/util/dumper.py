@@ -44,6 +44,7 @@ class Dumper:
 		# Custom loggers dont work due to some bug in cryptofeed
 		# self._logger = logging.getLogger(f'Dumper({self.symbol}@{self.event_type})')
 		self._logger = logging.getLogger('feedhandler')
+		# self._logger.setLevel(logging.DEBUG)
 		self._dumping_start_time = 0
 
 	def dump(self, msg: Dict) -> None:
@@ -96,9 +97,9 @@ class Dumper:
 				self._set_buffer_max_len(50)
 			if messages_per_second < 0.5:
 				self._set_buffer_max_len(100)
-			if messages_per_second > 10:
+			if messages_per_second > 5:
 				self._set_buffer_max_len(1000)
-			if messages_per_second > 30:
+			if messages_per_second > 20:
 				self._set_buffer_max_len(2000)
 			else:
 				self._set_buffer_max_len(500)
@@ -108,8 +109,8 @@ class Dumper:
 
 	def _set_buffer_max_len(self, new_len: int) -> None:
 		if new_len != self._set_buffer_max_len:
-			if new_len >= self._buffer_position:
-				self._logger.info('Setting buffer max len = %d', new_len)
+			if new_len >= self._buffer_position and new_len != self.buffer_max_len:
+				self._logger.info('Setting %s@%s buffer max len = %d', self.symbol, self.event_type, new_len)
 				self.buffer_max_len = new_len
 
 	def _reopen(self) -> None:
