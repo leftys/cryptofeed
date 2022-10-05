@@ -84,7 +84,9 @@ setup(
         # Two (optional) dependencies that speed up Cryptofeed:
         "aiodns>=1.1",  # aiodns speeds up DNS resolving
         "cchardet",  # cchardet is a faster replacement for chardet
-        "order_book>=0.5.0"
+        "order_book>=0.5.0",
+        "aiomonitor>=0.4.5",
+        "aioconsole>=0.5.1",
     ],
     extras_require={
         "arctic": ["arctic", "pandas"],

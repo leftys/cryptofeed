@@ -11,6 +11,8 @@ import signal
 from signal import SIGABRT, SIGINT, SIGTERM
 import sys
 from typing import List
+import aiomonitor
+import aioconsole
 
 try:
     # unix / macos only
@@ -144,6 +146,17 @@ class FeedHandler:
 
         if not start_loop:
             return
+
+        aiomonitor.start_monitor(
+            loop = loop,
+            host = '127.0.0.1',
+            port = 8080,
+            console_port = 8070,
+            locals = {
+                'asyncio': asyncio,
+                'app': self,
+            }
+        )
 
         try:
             if exception_handler:

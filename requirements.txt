@@ -10,3 +10,5 @@ uvloop>=0.17.0
 websockets>=10.3
 yapic.json>=1.7.3
 pyarrow>=9.0.0
+aiomonitor>=0.4.5
+aioconsole>=0.5.1
