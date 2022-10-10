@@ -9,8 +9,7 @@ LOG = logging.getLogger('feedhandler')
 
 
 class ParquetCallback(BackendQueue):
-    def __init__(self, path: str, key=None, **kwargs):
-        self.path = path
+    def __init__(self, key=None, **kwargs):
         self.key = key if key else self.default_key
         self.numeric_type = float
         self.none_to = None
@@ -28,7 +27,7 @@ class ParquetCallback(BackendQueue):
                     except KeyError:
                         # TODO data['exchange']?
                         # TODO upload to s3
-                        dumper = self._dumpers[data['exchange']][data['symbol']] = Dumper(self.path, data['symbol'], self.key, data['exchange'])
+                        dumper = self._dumpers[data['exchange']][data['symbol']] = Dumper(data['symbol'], self.key, data['exchange'])
                     del data['symbol']
                     del data['exchange']
                     dumper.dump(data)

@@ -26,9 +26,7 @@ class Dumper:
 	for the resulting file to be readable.
 	'''
 
-	# TODO: remove path (s3)
-	def __init__(self, path: str, symbol: str, event_type: str, exchange: str, buffer_len: int = 0) -> None:
-		self.path = path
+	def __init__(self, symbol: str, event_type: str, exchange: str, buffer_len: int = 0) -> None:
 		self.symbol = symbol
 		self.event_type = event_type
 		self.exchange = exchange
@@ -44,7 +42,7 @@ class Dumper:
 		# Custom loggers dont work due to some bug in cryptofeed
 		# self._logger = logging.getLogger(f'Dumper({self.symbol}@{self.event_type})')
 		self._logger = logging.getLogger('feedhandler')
-		# self._logger.setLevel(logging.DEBUG)
+		self._logger.setLevel(logging.DEBUG)
 		self._dumping_start_time = 0
 
 	def dump(self, msg: Dict) -> None:
@@ -203,7 +201,7 @@ class Dumper:
 		if self._store is None:
 			self._reopen()
 
-		self._logger.debug(f'Flushing {self.symbol}@{self.event_type}')
+		# self._logger.debug(f'Flushing {self.symbol}@{self.event_type}')
 		with self._data_lock:
 			pa_table = pa.Table.from_pydict(self._column_data, schema = self._schema)
 			self._buffer_position = 0
