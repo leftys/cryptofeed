@@ -33,7 +33,7 @@ class KuCoin(Feed):
     valid_candle_intervals = {'1m', '3m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '1w'}
     candle_interval_map = {'1m': '1min', '3m': '3min', '15m': '15min', '30m': '30min', '1h': '1hour', '2h': '2hour', '4h': '4hour', '6h': '6hour', '8h': '8hour', '12h': '12hour', '1d': '1day', '1w': '1week'}
     websocket_channels = {
-        L2_BOOK: '/market/level2',
+        L2_BOOK: '/spotMarket/level2Depth50',
         TRADES: '/market/match',
         TICKER: '/market/ticker',
         CANDLES: '/market/candles'
@@ -186,11 +186,11 @@ class KuCoin(Feed):
         headers = self.generate_token(str_to_sign)
         data = await self.http_conn.read(self.rest_endpoints[0].route('l2book', self.sandbox).format(symbol), header=headers)
         timestamp = time.time()
-        data = json.loads(data, parse_float=Decimal)
+        data = json.loads(data, parse_float=float)
         data = data['data']
         self.seq_no[symbol] = int(data['sequence'])
-        bids = {Decimal(price): Decimal(amount) for price, amount in data['bids']}
-        asks = {Decimal(price): Decimal(amount) for price, amount in data['asks']}
+        bids = {float(price): float(amount) for price, amount in data['bids']}
+        asks = {float(price): float(amount) for price, amount in data['asks']}
         self._l2_book[symbol] = OrderBook(self.id, symbol, max_depth=self.max_depth, bids=bids, asks=asks)
 
         await self.book_callback(L2_BOOK, self._l2_book[symbol], timestamp, raw=data, sequence_number=int(data['sequence']))
@@ -208,7 +208,7 @@ class KuCoin(Feed):
                 'sequenceEnd': 1615591136351
             },
             'subject': 'trade.l2update',
-            'topic': '/market/level2:BTC-USDT',
+            'topic': '/market/level2Depth50:BTC-USDT',
             'type': 'message'
         }
         """

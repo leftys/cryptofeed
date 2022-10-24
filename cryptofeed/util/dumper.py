@@ -43,7 +43,8 @@ class Dumper:
 		# self._logger = logging.getLogger(f'Dumper({self.symbol}@{self.event_type})')
 		self._logger = logging.getLogger('feedhandler')
 		self._logger.setLevel(logging.DEBUG)
-		self._dumping_start_time = 0
+		self._dumping_start_time = time.time()
+		# pa.log_memory_allocations(True)
 
 	def dump(self, msg: Dict) -> None:
 		date = datetime.date.today()
@@ -87,20 +88,21 @@ class Dumper:
 
 			self._buffer_position += 1
 
-		if self._store is None and self._automatically_set_buffer_len and self._buffer_position % 50 == 0:
+		if self._store is None and self._automatically_set_buffer_len and self._buffer_position % 25 == 0:
 			time_now = time.time()
 			since_start = time_now - self._dumping_start_time
 			messages_per_second = self._buffer_position / since_start
-			if messages_per_second < 0.1:
-				self._set_buffer_max_len(50)
+			# self._logger.info('Msgs = %.2f %d %d', messages_per_second, self._buffer_position, since_start)
 			if messages_per_second < 0.5:
+				self._set_buffer_max_len(50)
+			elif messages_per_second < 1:
 				self._set_buffer_max_len(100)
-			if messages_per_second > 5:
-				self._set_buffer_max_len(1000)
-			if messages_per_second > 20:
-				self._set_buffer_max_len(2000)
-			else:
+			elif messages_per_second < 3:
+				self._set_buffer_max_len(200)
+			elif messages_per_second < 25:
 				self._set_buffer_max_len(500)
+			else:
+				self._set_buffer_max_len(1_000)
 
 		if self._buffer_position == self.buffer_max_len:
 			self._flush()
