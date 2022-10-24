@@ -33,7 +33,7 @@ class KuCoin(Feed):
     valid_candle_intervals = {'1m', '3m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '1w'}
     candle_interval_map = {'1m': '1min', '3m': '3min', '15m': '15min', '30m': '30min', '1h': '1hour', '2h': '2hour', '4h': '4hour', '6h': '6hour', '8h': '8hour', '12h': '12hour', '1d': '1day', '1w': '1week'}
     websocket_channels = {
-        L2_BOOK: '/spotMarket/level2Depth50',
+        L2_BOOK: '/market/level2',
         TRADES: '/market/match',
         TICKER: '/market/ticker',
         CANDLES: '/market/candles'
@@ -208,7 +208,7 @@ class KuCoin(Feed):
                 'sequenceEnd': 1615591136351
             },
             'subject': 'trade.l2update',
-            'topic': '/market/level2Depth50:BTC-USDT',
+            'topic': '/market/level2:BTC-USDT',
             'type': 'message'
         }
         """
@@ -228,8 +228,8 @@ class KuCoin(Feed):
         delta = {BID: [], ASK: []}
         for s, side in (('bids', BID), ('asks', ASK)):
             for update in data['changes'][s]:
-                price = Decimal(update[0])
-                amount = Decimal(update[1])
+                price = float(update[0])
+                amount = float(update[1])
 
                 if amount == 0:
                     if price in self._l2_book[symbol].book[side]:
