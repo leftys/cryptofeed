@@ -110,3 +110,5 @@ ENV/
 
 # parquet backend data
 /data/*
+
+fil-result
