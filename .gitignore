@@ -112,3 +112,4 @@ ENV/
 /data/*
 
 fil-result
+*.spd
