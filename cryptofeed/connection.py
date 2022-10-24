@@ -20,6 +20,7 @@ import websockets
 import aiohttp
 from aiohttp.typedefs import StrOrURL
 from yapic import json as json_parser
+# import json as json_parser
 
 from cryptofeed.exceptions import ConnectionClosed
 from cryptofeed.symbols import str_to_symbol

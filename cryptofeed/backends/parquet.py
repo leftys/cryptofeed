@@ -35,23 +35,23 @@ class ParquetCallback(BackendQueue):
             if not updates:
                 break
 
-    @staticmethod
-    def _format_timestamps(data):
-        data["receipt_timestamp"] = int(data["receipt_timestamp"] * 1_000_000_000)
+    async def __call__(self, dtype, receipt_timestamp: float):
+        data = dtype.to_dict(numeric_type=self.numeric_type, none_to=self.none_to)
         data["timestamp"] = int(data["timestamp"] * 1_000_000_000) if data['timestamp'] is not None else None
-        return data
-
-    async def write(self, data):
-        await self.queue.put(self._format_timestamps(data))
+        data["receipt_timestamp"] = int(receipt_timestamp * 1_000_000_000)
+        if not dtype.timestamp:
+            data['timestamp'] = receipt_timestamp
+        await self.write(data)
 
     async def stop(self):
+        LOG.info('Stopping')
         for exchange_dumpers in self._dumpers.values():
             for dumper in exchange_dumpers.values():
                 dumper.close()
         await super().stop()
 
 
-class TradeParquet(ParquetCallback, BackendCallback):
+class TradeParquet(ParquetCallback):
     default_key = 'trades'
 
     async def write(self, data):
@@ -59,9 +59,9 @@ class TradeParquet(ParquetCallback, BackendCallback):
         if data['type'] is None:
             del data['type']
         # TODO trade id can be str or int on exchanges and strs got converted to float
-        await self.queue.put(self._format_timestamps(data))
+        await super().write(data)
 
-class FundingParquet(ParquetCallback, BackendCallback):
+class FundingParquet(ParquetCallback):
     default_key = 'funding'
 
 
@@ -92,7 +92,7 @@ class BookParquet(ParquetCallback):
                     data[f'{side_name}_{i}_price'] = float(level[0])
                     data[f'{side_name}_{i}_size'] = float(level[1])
         # print(book.exchange, book.delta)
-        await self.queue.put(data)
+        await super().write(data)
 
 class BookDeltaParquet(ParquetCallback):
     default_key = 'book-delta'
@@ -112,22 +112,22 @@ class BookDeltaParquet(ParquetCallback):
                 data[f'{side_name}_price'] = float(update[0])
                 data[f'{side_name}_size'] = float(update[1])
         print(book.exchange, book.delta)
-        await self.queue.put(data)
+        await super().write(data)
 
 
-class TickerParquet(ParquetCallback, BackendCallback):
+class TickerParquet(ParquetCallback):
     default_key = 'ticker'
 
 
-class OpenInterestParquet(ParquetCallback, BackendCallback):
+class OpenInterestParquet(ParquetCallback):
     default_key = 'open_interest'
 
 
-class LiquidationsParquet(ParquetCallback, BackendCallback):
+class LiquidationsParquet(ParquetCallback):
     default_key = 'liquidations'
 
 
-class CandlesParquet(ParquetCallback, BackendCallback):
+class CandlesParquet(ParquetCallback):
     default_key = 'candles'
 
     async def write(self, data):
@@ -135,20 +135,20 @@ class CandlesParquet(ParquetCallback, BackendCallback):
         del data['closed']
         # data['start'] = int(data['start'])
         # data['stop'] = int(data['stop'])
-        await self.queue.put(self._format_timestamps(data))
+        await super().write(data)
 
 
-class OrderInfoParquet(ParquetCallback, BackendCallback):
+class OrderInfoParquet(ParquetCallback):
     default_key = 'order_info'
 
 
-class TransactionsParquet(ParquetCallback, BackendCallback):
+class TransactionsParquet(ParquetCallback):
     default_key = 'transactions'
 
 
-class BalancesParquet(ParquetCallback, BackendCallback):
+class BalancesParquet(ParquetCallback):
     default_key = 'balances'
 
 
-class FillsParquet(ParquetCallback, BackendCallback):
+class FillsParquet(ParquetCallback):
     default_key = 'fills'
