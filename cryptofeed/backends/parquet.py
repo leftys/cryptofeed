@@ -67,9 +67,15 @@ class FundingParquet(ParquetCallback, BackendCallback):
 class BookParquet(ParquetCallback):
     default_key = 'book'
 
-    def __init__(self, max_depth = 10, *args, **kwargs):
+    def __init__(self, max_depth = 10, snapshot_interval_s = 0.1, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.max_depth = max_depth
+        self.snapshot_interval_ns = snapshot_interval_s * 1_000_000_000
+        self.last_book = None
+        self.last_receipt_timestamp = 0
+        self._saved = 0
+        self._dropped = 0
+        self._postponed = 0
 
     async def __call__(self, book, receipt_timestamp: float):
         # TODO only save every 100ms or snapshot_interval or so?
@@ -78,6 +84,14 @@ class BookParquet(ParquetCallback):
         data['exchange'] = book.exchange
         data['timestamp'] = int(book.timestamp * 1_000_000_000) if book.timestamp else 0
         data["receipt_timestamp"] = int(receipt_timestamp * 1_000_000_000)
+
+        within_snapshot_interval = data['receipt_timestamp'] - self.last_receipt_timestamp < self.snapshot_interval_ns
+        within_quarter_snapshot_interval = data['receipt_timestamp'] - self.last_receipt_timestamp < self.snapshot_interval_ns // 4
+        if within_quarter_snapshot_interval:
+            # Drop ultra high frequency snapshots immediately
+            self._dropped += 1
+            return
+
         data['sequence_number'] = book.sequence_number
         for side_name, side in (('bid', book.book.bids), ('ask', book.book.asks)):
             for i in range(self.max_depth):
@@ -90,8 +104,20 @@ class BookParquet(ParquetCallback):
                 else:
                     data[f'{side_name}_{i}_price'] = float(level[0])
                     data[f'{side_name}_{i}_size'] = float(level[1])
-        # print(book.exchange, book.delta)
-        await self.queue.put(data)
+
+        if not within_snapshot_interval:
+            # print(book.exchange, book.delta)
+            await self.queue.put(data)
+            self._saved += 1
+            self.last_receipt_timestamp = data['receipt_timestamp']
+        else:
+            self._postponed += 1
+
+    # async def stop(self):
+    #     await super().stop()
+    #     print(self._saved)
+    #     print(self._dropped)
+    #     print(self._postponed)
 
 class BookDeltaParquet(ParquetCallback):
     default_key = 'book-delta'
