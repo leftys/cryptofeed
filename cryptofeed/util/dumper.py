@@ -101,7 +101,7 @@ class Dumper:
 			# self._logger.info('Msgs = %.2f %d %d', messages_per_second, self._buffer_position, since_start)
 			if messages_per_second < 0.1:
 				self._set_buffer_max_len(200, messages_per_second)
-			elif messages_per_second < 5:
+			elif messages_per_second < 3:
 				self._set_buffer_max_len(500, messages_per_second)
 			elif messages_per_second < 20:
 				self._set_buffer_max_len(3000, messages_per_second)
