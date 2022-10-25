@@ -9,6 +9,7 @@ import logging
 import random
 import gc
 
+import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 
@@ -32,7 +33,7 @@ class Dumper:
 		self.exchange = exchange
 		self._store: Optional[pq.ParquetWriter] = None
 		self._store_date = datetime.date.today()
-		self._column_data: Dict[str, Any] = {}
+		self._column_data: Dict[str, np.ndarray] = {}
 		self._schema: Optional[pa.Schema] = None
 		self._buffer_position = 0
 		self.buffer_max_len = buffer_len or 500
@@ -58,13 +59,14 @@ class Dumper:
 			if not self._column_data:
 				schema_fields = []
 				for name, value in msg.items():
-					self._column_data[name] = []
 					if type(value) == int and value < 1e9:
 						t = pa.int64()  # TODO: can we safely use int32 with smarter type detection or explicitly?
 					elif type(value) == int:
 						t = pa.int64()
 					elif type(value) == float:
 						t = pa.float64()
+					# elif name == 'side':
+					# 	t = pa.binary(4)
 					elif type(value) == str and self._is_int(value):
 						t = pa.int64()
 					elif type(value) == str and self._is_hex(value):
@@ -77,14 +79,18 @@ class Dumper:
 						t = pa.bool_()
 					else:
 						raise TypeError('Unknown data type', value, type(value), msg)
+					self._column_data[name] = np.empty(self.buffer_max_len, dtype = t.to_pandas_dtype())
 					schema_fields.append(pa.field(name, t))
 				self._schema = pa.schema(schema_fields)
 				# self._logger.info('Schema = %s', self._schema)
 
-			for i, (key, value) in enumerate(msg.items()):
-				if type(value) == str and self._is_float(value):
-					value = float(value)
-				self._column_data[key].append(value)
+			for key, value in msg.items():
+				if type(value) == str:
+					if self._is_float(value):
+						value = float(value)
+					# elif key == 'side' and value in ('buy', 'sell'):
+					# 	value = 1 if value == 'buy' else 0
+				self._column_data[key][self._buffer_position] = value
 
 			self._buffer_position += 1
 
@@ -94,15 +100,13 @@ class Dumper:
 			messages_per_second = self._buffer_position / since_start
 			# self._logger.info('Msgs = %.2f %d %d', messages_per_second, self._buffer_position, since_start)
 			if messages_per_second < 0.5:
-				self._set_buffer_max_len(50)
-			elif messages_per_second < 1:
-				self._set_buffer_max_len(100)
-			elif messages_per_second < 3:
 				self._set_buffer_max_len(200)
-			elif messages_per_second < 25:
+			elif messages_per_second < 10:
 				self._set_buffer_max_len(500)
+			elif messages_per_second < 25:
+				self._set_buffer_max_len(3000)
 			else:
-				self._set_buffer_max_len(1_000)
+				self._set_buffer_max_len(10_000)
 
 		if self._buffer_position == self.buffer_max_len:
 			self._flush()
@@ -112,6 +116,12 @@ class Dumper:
 			if new_len >= self._buffer_position and new_len != self.buffer_max_len:
 				self._logger.info('Setting %s@%s buffer max len = %d', self.symbol, self.event_type, new_len)
 				self.buffer_max_len = new_len
+				# self._logger.info("%s", self._column_data)
+				for name in self._column_data.keys():
+					# self._logger.info("%s %s", name, self._column_data[name].dtype)
+					self._column_data[name].resize(self.buffer_max_len)
+				# self._logger.info('Done')
+				# time.sleep(0.1)
 
 	def _reopen(self) -> None:
 		'''
@@ -163,6 +173,7 @@ class Dumper:
 		pool = pa.default_memory_pool()
 		pool.release_unused()
 		self._logger.info('Allocated = %d %d %d',pool.bytes_allocated(), pool.max_memory(), pa.total_allocated_bytes())
+		# pa.log_memory_allocations(False)
 
 		if original_table is not None:
 			del original_table
@@ -205,10 +216,19 @@ class Dumper:
 
 		# self._logger.debug(f'Flushing {self.symbol}@{self.event_type}')
 		with self._data_lock:
-			pa_table = pa.Table.from_pydict(self._column_data, schema = self._schema)
-			self._buffer_position = 0
-			self._column_data.clear()
+			if self._buffer_position == self.buffer_max_len:
+				arrays = list(self._column_data.values())
+			else:
+				arrays = []
+				for array in self._column_data.values():
+					arrays.append(array[:self._buffer_position])
+
+			pa_table = pa.Table.from_arrays(
+				arrays = arrays,
+				schema = self._schema
+			)
 			self._store.write_table(pa_table, row_group_size = self.buffer_max_len)
+			self._buffer_position = 0
 		if random.random() > 0.99: # TODO
 			# Trigger GC after 1% flushes to better fit into memory
 			self._logger.debug('GC')
