@@ -99,22 +99,25 @@ class Dumper:
 			since_start = time_now - self._dumping_start_time
 			messages_per_second = self._buffer_position / since_start
 			# self._logger.info('Msgs = %.2f %d %d', messages_per_second, self._buffer_position, since_start)
-			if messages_per_second < 0.5:
-				self._set_buffer_max_len(200)
-			elif messages_per_second < 10:
-				self._set_buffer_max_len(500)
-			elif messages_per_second < 25:
-				self._set_buffer_max_len(3000)
+			if messages_per_second < 0.1:
+				self._set_buffer_max_len(200, messages_per_second)
+			elif messages_per_second < 5:
+				self._set_buffer_max_len(500, messages_per_second)
+			elif messages_per_second < 20:
+				self._set_buffer_max_len(3000, messages_per_second)
 			else:
-				self._set_buffer_max_len(10_000)
+				self._set_buffer_max_len(10_000, messages_per_second)
 
 		if self._buffer_position == self.buffer_max_len:
 			self._flush()
 
-	def _set_buffer_max_len(self, new_len: int) -> None:
+	def _set_buffer_max_len(self, new_len: int, messages_per_second: float) -> None:
 		if new_len != self._set_buffer_max_len:
 			if new_len >= self._buffer_position and new_len != self.buffer_max_len:
-				self._logger.info('Setting %s@%s buffer max len = %d', self.symbol, self.event_type, new_len)
+				self._logger.info(
+					'Setting %s@%s buffer max len = %d, messages/s = %.2f',
+					self.symbol, self.event_type, new_len, messages_per_second
+				)
 				self.buffer_max_len = new_len
 				# self._logger.info("%s", self._column_data)
 				for name in self._column_data.keys():
