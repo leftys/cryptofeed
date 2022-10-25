@@ -44,7 +44,7 @@ class Dumper:
 		# self._logger = logging.getLogger(f'Dumper({self.symbol}@{self.event_type})')
 		self._logger = logging.getLogger('feedhandler')
 		self._logger.setLevel(logging.DEBUG)
-		self._dumping_start_time = time.time()
+		self._dumping_start_time = None
 		# pa.log_memory_allocations(True)
 
 	def dump(self, msg: Dict) -> None:
@@ -53,6 +53,8 @@ class Dumper:
 			self._flush()
 			self._store.close()
 			self._store = None
+			self._dumping_start_time = None
+		if self._dumping_start_time is None:
 			self._dumping_start_time = time.time()
 
 		with self._data_lock:
@@ -184,10 +186,6 @@ class Dumper:
 				original_table = original_file.read_row_group(i, use_threads = False)
 				self._store.write_table(original_table, row_group_size = self.buffer_max_len)
 				del original_table
-			if random.random() > 0.9:
-				# Trigger GC after 10% re-opens to better fit into memory
-				self._logger.debug('GC')
-				gc.collect()
 			os.unlink(old_file_name)
 
 	def _update_store_metadata(self, schema: pa.Schema, existed: bool) -> pa.Schema:
@@ -218,6 +216,7 @@ class Dumper:
 			self._reopen()
 
 		# self._logger.debug(f'Flushing {self.symbol}@{self.event_type}')
+		time_before = time.time()
 		with self._data_lock:
 			if self._buffer_position == self.buffer_max_len:
 				arrays = list(self._column_data.values())
@@ -230,9 +229,13 @@ class Dumper:
 				arrays = arrays,
 				schema = self._schema
 			)
+			del arrays
 			self._store.write_table(pa_table, row_group_size = self.buffer_max_len)
+			rows_written = self._buffer_position
 			self._buffer_position = 0
+		lag = time.time() - time_before
 		if random.random() > 0.99: # TODO
+			self._logger.info('Flush of %d rows of %s@%s took %.3f s', rows_written, self.symbol, self.event_type, lag)
 			# Trigger GC after 1% flushes to better fit into memory
 			self._logger.debug('GC')
 			del pa_table
