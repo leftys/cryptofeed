@@ -79,8 +79,11 @@ class Dumper:
 						t = pa.string()  # TODO: can we safely use categories with smarter type detection or explicitly?
 					elif type(value) == bool:
 						t = pa.bool_()
+					elif value is None:
+						self._logger.error('None value in %s', name)
+						t = pa.int32()
 					else:
-						raise TypeError('Unknown data type', value, type(value), msg)
+						raise TypeError('Unknown data type', name, value, type(value), msg)
 					self._column_data[name] = np.empty(self.buffer_max_len, dtype = t.to_pandas_dtype())
 					schema_fields.append(pa.field(name, t))
 				self._schema = pa.schema(schema_fields)
@@ -92,6 +95,8 @@ class Dumper:
 						value = float(value)
 					# elif key == 'side' and value in ('buy', 'sell'):
 					# 	value = 1 if value == 'buy' else 0
+				if value is None:
+					value = -1
 				self._column_data[key][self._buffer_position] = value
 
 			self._buffer_position += 1
