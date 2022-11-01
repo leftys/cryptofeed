@@ -77,13 +77,10 @@ setup(
         "requests>=2.18.4",
         "websockets>=10.0",
         "pyyaml",
-        "aiohttp==3.8.1",
+        "aiohttp[speedups]==3.8.1",
         "aiofile>=2.0.0",
         "yapic.json>=1.6.3",
         'uvloop ; platform_system!="Windows"',
-        # Two (optional) dependencies that speed up Cryptofeed:
-        "aiodns>=1.1",  # aiodns speeds up DNS resolving
-        "cchardet",  # cchardet is a faster replacement for chardet
         "order_book>=0.5.0",
         "aiomonitor>=0.4.5",
         "aioconsole>=0.5.1",
