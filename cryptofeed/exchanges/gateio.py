@@ -4,6 +4,7 @@ Copyright (C) 2017-2022 Bryant Moscon - bmoscon@gmail.com
 Please see the LICENSE file for the terms and conditions
 associated with this software.
 '''
+import asyncio
 from collections import defaultdict
 import logging
 from decimal import Decimal
@@ -171,6 +172,8 @@ class Gateio(Feed):
         """
         symbol = self.exchange_symbol_to_std_symbol(msg['result']['s'])
         if symbol not in self._l2_book:
+            # This can help get snapshot and updates in sync
+            await asyncio.sleep(1)
             await self._snapshot(msg['result']['s'])
 
         skip_update = self._check_update_id(symbol, msg['result'])
