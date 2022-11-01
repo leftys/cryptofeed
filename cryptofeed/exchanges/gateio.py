@@ -142,8 +142,11 @@ class Gateio(Feed):
         elif not forced and self.last_update_id[pair] + 1 == msg['U']:
             self.last_update_id[pair] = msg['u']
         else:
+            LOG.warning(
+                "%s: Missing book update detected, resetting book. last id = %d, received %d-%d",
+                self.id, self.last_update_id[pair] , msg['U'], msg['u']
+            )
             self._reset()
-            LOG.warning("%s: Missing book update detected, resetting book", self.id)
             skip_update = True
 
         return skip_update
@@ -190,7 +193,7 @@ class Gateio(Feed):
                     self._l2_book[symbol].book[side][price] = amount
                     delta[side].append((price, amount))
 
-        await self.book_callback(L2_BOOK, self._l2_book[symbol], timestamp, delta=delta, timestamp=ts, raw=msg)
+        await self.book_callback(L2_BOOK, self._l2_book[symbol], timestamp, delta=delta, timestamp=ts, raw=msg, sequence_number=msg['result']['u'])
 
     async def _candles(self, msg: dict, timestamp: float):
         """
