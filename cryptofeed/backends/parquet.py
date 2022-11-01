@@ -78,7 +78,6 @@ class BookParquet(ParquetCallback):
         self._postponed = 0
 
     async def __call__(self, book, receipt_timestamp: float):
-        # TODO only save every 100ms or snapshot_interval or so?
         data = {}
         data['symbol'] = book.symbol
         data['exchange'] = book.exchange
@@ -94,16 +93,14 @@ class BookParquet(ParquetCallback):
 
         data['sequence_number'] = book.sequence_number
         for side_name, side in (('bid', book.book.bids), ('ask', book.book.asks)):
-            for i in range(self.max_depth):
-                try:
-                    # TODO: this is slow. update order-book library, cythonize this loop, or both
-                    level = side.index(i)
-                except:
-                    data[f'{side_name}_{i}_price'] = float('nan')
-                    data[f'{side_name}_{i}_size'] = float('nan')
-                else:
-                    data[f'{side_name}_{i}_price'] = float(level[0])
-                    data[f'{side_name}_{i}_size'] = float(level[1])
+            depth = -1
+            for depth, (price, size) in enumerate(side.to_list(self.max_depth)):
+                data[f'{side_name}_{depth}_price'] = float(price)
+                data[f'{side_name}_{depth}_size'] = float(size)
+            for i in range(depth+1, self.max_depth):
+                # Those levels are not present
+                data[f'{side_name}_{i}_price'] = float('nan')
+                data[f'{side_name}_{i}_size'] = float('nan')
 
         if not within_snapshot_interval:
             # print(book.exchange, book.delta)
@@ -131,13 +128,32 @@ class BookDeltaParquet(ParquetCallback):
         data['exchange'] = book.exchange
         data['timestamp'] = int(book.timestamp * 1_000_000_000) if book.timestamp else 0
         data["receipt_timestamp"] = int(receipt_timestamp * 1_000_000_000)
-        data['sequence_number'] = book.sequence_number
-        for side_name in ('bid', 'ask'):
-            for update in book.delta[side_name]:
-                data[f'{side_name}_price'] = float(update[0])
-                data[f'{side_name}_size'] = float(update[1])
-        print(book.exchange, book.delta)
-        await self.queue.put(data)
+        # data['sequence_number'] = book.sequence_number
+        # print('delta', book.delta)
+        print('raw', book.raw)
+        if book.delta:
+            delta = book.delta
+            iters = {'bid': iter(delta['bid']), 'ask': iter(delta['ask'])}
+        else:
+            delta = book.book.to_dict()
+            iters = {'bid': iter(delta['bid'].items()), 'ask': iter(delta['ask'].items())}
+
+        while True:
+            data_copy = data.copy()
+            updates = 0
+            for side in ('bid', 'ask'):
+                update = next(iters[side], None)
+                try:
+                    data_copy[f'{side}_price'] = float(update[0])
+                    data_copy[f'{side}_size'] = float(update[1])
+                    updates += 1
+                except TypeError:
+                    data_copy[f'{side}_price'] = 0.
+                    data_copy[f'{side}_size'] = 0.
+            if not updates:
+                break
+
+            await self.queue.put(data_copy)
 
 
 class TickerParquet(ParquetCallback, BackendCallback):

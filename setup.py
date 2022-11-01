@@ -81,7 +81,7 @@ setup(
         "aiofile>=2.0.0",
         "yapic.json>=1.6.3",
         'uvloop ; platform_system!="Windows"',
-        "order_book>=0.5.0",
+        "order_book>=0.6.0",
         "aiomonitor>=0.4.5",
         "aioconsole>=0.5.1",
     ],
