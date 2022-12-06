@@ -5,9 +5,9 @@ Please see the LICENSE file for the terms and conditions
 associated with this software.
 '''
 from cryptofeed import FeedHandler
-from cryptofeed.backends.parquet import BookParquet, CandlesParquet, FundingParquet, TickerParquet, TradeParquet, BookDeltaParquet
-from cryptofeed.defines import CANDLES, FUNDING, L2_BOOK, TICKER, TRADES
-from cryptofeed.exchanges import FTX, Binance, KuCoin
+from cryptofeed.backends.parquet import BookParquet, CandlesParquet, FundingParquet, TickerParquet, TradeParquet, BookDeltaParquet, LiquidationsParquet, OpenInterestParquet
+from cryptofeed.defines import CANDLES, FUNDING, L2_BOOK, TICKER, TRADES, OPEN_INTEREST, LIQUIDATIONS
+from cryptofeed.exchanges import FTX, Binance, KuCoin, Gateio, BinanceFutures, Serum
 
 def main():
     config = {
@@ -22,13 +22,16 @@ def main():
     # f.add_feed(Bitmex(channels=[FUNDING, L2_BOOK], symbols=['BTC-USD-PERP'], callbacks={FUNDING: FundingParquet(host=Parquet_HOST, port=Parquet_PORT), L2_BOOK: BookParquet(host=Parquet_HOST, port=Parquet_PORT)}))
     # f.add_feed(Binance(channels=[TRADES, L2_BOOK, CANDLES], symbols=['BTC-USDT', 'ETH-BTC'], callbacks={TRADES: TradeParquet(), L2_BOOK: [BookParquet(), BookDeltaParquet()], CANDLES: CandlesParquet()}, max_depth = 20))
     # f.add_feed(Binance(channels=[TRADES, L2_BOOK, CANDLES], symbols=['BTC-USDT', 'ETH-BTC'], callbacks={TRADES: TradeParquet(), L2_BOOK: BookParquet(), CANDLES: CandlesParquet()}, max_depth = 20))
+    # f.add_feed(Gateio(channels=[TRADES, L2_BOOK], symbols=['BTC-USDT', 'ETH-USDT'], callbacks={TRADES: TradeParquet(), L2_BOOK: [BookParquet()]}))
     # f.add_feed(Binance(channels=[TRADES], symbols=['BTC-USDT', 'ETH-USDT'], callbacks={TRADES: TradeParquet()}))
-    # f.add_feed(FTX(channels=[TRADES, L2_BOOK], symbols=['ETH-USD'], callbacks={TRADES: TradeParquet(), L2_BOOK: BookParquet()}, max_depth = 20))
-    f.add_feed(KuCoin(config = config, channels=[TRADES, L2_BOOK], symbols=['BTC-USDT', 'ETH-USDT'], callbacks={TRADES: TradeParquet(), L2_BOOK: BookParquet()}, max_depth = 20))
+    # f.add_feed(FTX(channels=[TRADES, L2_BOOK], symbols=['ETH-USD', 'BTC-USD'], callbacks={TRADES: TradeParquet(), L2_BOOK: BookParquet()}, max_depth = 20))
+    # f.add_feed(KuCoin(config = config, channels=[TRADES, L2_BOOK], symbols=['BTC-USDT', 'ETH-USDT'], callbacks={TRADES: TradeParquet(), L2_BOOK: BookParquet()}, max_depth = 20))
     # f.add_feed(KuCoin(channels=[TRADES], symbols=['BTC-USDT'], callbacks={TRADES: TradeParquet(), L2_BOOK: BookParquet()}, max_depth = 20))
     # f.add_feed(Coinbase(channels=[L2_BOOK], symbols=['BTC-USD'], callbacks={L2_BOOK: BookParquet(host=Parquet_HOST, port=Parquet_PORT)}))
     # f.add_feed(Coinbase(channels=[TICKER], symbols=['BTC-USD'], callbacks={TICKER: TickerParquet(host=Parquet_HOST, port=Parquet_PORT)}))
     # f.add_feed(Binance(candle_closed_only=False, channels=[CANDLES], symbols=['BTC-USDT'], callbacks={CANDLES: CandlesParquet(host=Parquet_HOST, port=Parquet_PORT)}))
+    # f.add_feed(BinanceFutures(symbols=['BTC-USDT-PERP'], channels=[TRADES, L2_BOOK, OPEN_INTEREST, FUNDING, LIQUIDATIONS], callbacks={TRADES: TradeParquet(), OPEN_INTEREST: OpenInterestParquet(), FUNDING: FundingParquet(), LIQUIDATIONS: LiquidationsParquet(), L2_BOOK: BookParquet(max_depth = 20)}, max_depth = 20))
+    f.add_feed(Serum(symbols=['SOL-USDC', 'ETH-USDC'], channels=[TRADES, L2_BOOK], callbacks={TRADES: TradeParquet(key = 'trades_mpid'), L2_BOOK: BookParquet(max_depth = 20)}, max_depth = 20))
     f.run()
 
 

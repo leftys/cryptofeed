@@ -48,6 +48,7 @@ from .okcoin import OKCoin
 from .okx import OKX
 from .poloniex import Poloniex
 from .probit import Probit
+from .serum import Serum
 from .upbit import Upbit
 
 # Maps string name to class name for use with config
@@ -94,5 +95,6 @@ EXCHANGE_MAP = {
     PHEMEX: Phemex,
     POLONIEX: Poloniex,
     PROBIT: Probit,
+    SERUM: Serum,
     UPBIT: Upbit,
 }

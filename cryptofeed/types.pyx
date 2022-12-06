@@ -86,6 +86,75 @@ cdef class Trade:
         return hash(self.__repr__())
 
 
+@cython.freelist(128)
+cdef class TradeMPID:
+    cdef readonly str exchange
+    cdef readonly str symbol
+    cdef readonly object price
+    cdef readonly object amount
+    cdef readonly str side
+    cdef readonly str id
+    cdef readonly str takerAccount
+    cdef readonly str makerAccount
+    cdef readonly str takerOrderId
+    cdef readonly str makerOrderId
+    cdef readonly str type
+    cdef readonly double timestamp
+    cdef readonly object raw  # can be dict or list
+
+    def __init__(self, exchange, symbol, side, amount, price, timestamp, id=None, takerAccount=None, makerAccount=None, takerOrderId=None, makerOrderId=None, type=None, raw=None):
+        assert isinstance(price, Decimal)
+        assert isinstance(amount, Decimal)
+
+        self.exchange = exchange
+        self.symbol = symbol
+        self.side = side
+        self.amount = amount
+        self.price = price
+        self.timestamp = timestamp
+        self.id = id
+        self.takerAccount = takerAccount
+        self.makerAccount = makerAccount
+        self.takerOrderId = takerOrderId
+        self.makerOrderId = makerOrderId
+        self.type = type
+        self.raw = raw
+
+    @staticmethod
+    def from_dict(data: dict) -> Trade:
+        return Trade(
+            data['exchange'],
+            data['symbol'],
+            data['side'],
+            Decimal(data['amount']),
+            Decimal(data['price']),
+            data['timestamp'],
+            data['takerAccount'],
+            data['makerAccount'],
+            data['takerOrderId'],
+            data['makerOrderId'],
+            id=data['id'],
+            type=data['type']
+        )
+
+    cpdef dict to_dict(self, numeric_type=None, none_to=False):
+        if numeric_type is None:
+            data = {'exchange': self.exchange, 'symbol': self.symbol, 'side': self.side, 'amount': self.amount, 'price': self.price, 'id': self.id, 'takerAccount': self.takerAccount, 'makerAccount': self.makerAccount, 'takerOrderId': self.takerOrderId, 'makerOrderId': self.makerOrderId, 'type': self.type, 'timestamp': self.timestamp}
+        else:
+            data = {'exchange': self.exchange, 'symbol': self.symbol, 'side': self.side, 'amount': numeric_type(self.amount), 'price': numeric_type(self.price), 'id': self.id, 'takerAccount': self.takerAccount, 'makerAccount': self.makerAccount, 'takerOrderId': self.takerOrderId, 'makerOrderId': self.makerOrderId, 'type': self.type, 'timestamp': self.timestamp}
+        return data if not none_to else convert_none_values(data, none_to)
+
+    # TODO add new fields
+    def __repr__(self):
+        return f"exchange: {self.exchange} symbol: {self.symbol} side: {self.side} amount: {self.amount} price: {self.price} id: {self.id} type: {self.type} timestamp: {self.timestamp}"
+
+    def __eq__(self, cmp):
+        return self.exchange == cmp.exchange and self.symbol == cmp.symbol and self.price == cmp.price and self.amount == cmp.amount and self.side == cmp.side and self.id == cmp.id and self.timestamp == cmp.timestamp
+
+    def __hash__(self):
+        return hash(self.__repr__())
+
+
 cdef class Ticker:
     cdef readonly str exchange
     cdef readonly str symbol
