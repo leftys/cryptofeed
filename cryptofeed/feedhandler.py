@@ -150,8 +150,8 @@ class FeedHandler:
         aiomonitor.start_monitor(
             loop = loop,
             host = '127.0.0.1',
-            port = 8080,
-            console_port = 8070,
+            port = 8081,
+            console_port = 8071,
             locals = {
                 'asyncio': asyncio,
                 'app': self,

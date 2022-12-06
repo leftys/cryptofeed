@@ -69,10 +69,12 @@ class Dumper:
 						t = pa.float64()
 					# elif name == 'side':
 					# 	t = pa.binary(4)
-					elif type(value) == str and self._is_int(value):
+					elif type(value) == str and self._is_int(value) and len(value) <= 19:
 						t = pa.int64()
-					elif type(value) == str and self._is_hex(value):
+					elif type(value) == str and self._is_hex(value) and len(value) <= 19:
 						t = pa.binary(len(value))
+					elif type(value) == str and len(value) > 19:
+						t = pa.string()
 					elif type(value) == str and self._is_float(value):
 						t = pa.float64()
 					elif type(value) == str:
@@ -90,14 +92,17 @@ class Dumper:
 				# self._logger.info('Schema = %s', self._schema)
 
 			for key, value in msg.items():
-				if type(value) == str:
+				if type(value) == str and len(value) <= 19:
 					if self._is_float(value):
 						value = float(value)
 					# elif key == 'side' and value in ('buy', 'sell'):
 					# 	value = 1 if value == 'buy' else 0
 				if value is None:
 					value = -1
-				self._column_data[key][self._buffer_position] = value
+				try:
+					self._column_data[key][self._buffer_position] = value
+				except OverflowError:
+					self._logger.error('Overflow in field = %s, value = %s', key, value)
 
 			self._buffer_position += 1
 
