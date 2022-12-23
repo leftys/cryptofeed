@@ -36,7 +36,7 @@ class HuobiSwap(HuobiDM):
 
     websocket_channels = {
         **HuobiDM.websocket_channels,
-        FUNDING: 'funding'
+        FUNDING: 'funding_rate'
     }
 
     @classmethod
