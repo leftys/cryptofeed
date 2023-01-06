@@ -21,7 +21,7 @@ LOG = logging.getLogger('feedhandler')
 class Serum(Feed):
     id = SERUM
     websocket_endpoints = [WebsocketEndpoint('wss://vial.mngo.cloud/v1/ws')]
-    rest_endpoints = [RestEndpoint('https://openserum.io', routes=Routes('/api/serum/markets.json'))]
+    rest_endpoints = [RestEndpoint('https://vial.mngo.cloud', routes=Routes('/v1/markets'))]
 
     websocket_channels = {
         L2_BOOK: 'level2',
@@ -45,11 +45,9 @@ class Serum(Feed):
             expiration = None
             stype = SPOT
 
-            base, quote = symbol['name'].split('/')
-
-            s = Symbol(base, quote, type=stype, expiry_date=expiration)
+            s = Symbol(symbol['baseCurrency'], symbol['quoteCurrency'], type=stype, expiry_date=expiration)
             ret[s.normalized] = symbol['name']
-            # info['tick_size'][s.normalized] = symbol['filters'][0]['tickSize']
+            info['tick_size'][s.normalized] = symbol['tickSize']
             info['instrument_type'][s.normalized] = stype
         return ret, info
 
