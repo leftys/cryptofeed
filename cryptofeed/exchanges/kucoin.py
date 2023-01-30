@@ -57,19 +57,22 @@ class KuCoin(Feed):
         return ret, info
 
     def __init__(self, **kwargs):
+        self.__reset()
+        super().__init__(**kwargs)
+        if any([len(self.subscription[chan]) > 300 for chan in self.subscription]):
+            raise ValueError("Kucoin has a limit of 300 symbols per connection")
+
+    def __reset(self):
+        self._l2_book = {}
+        self.seq_no = {}
+        self._get_websocket_endpoints()
+
+    def _get_websocket_endpoints(self):
         address_info = self.http_sync.write('https://api.kucoin.com/api/v1/bullet-public', json=True)
         token = address_info['data']['token']
         address = address_info['data']['instanceServers'][0]['endpoint']
         address = f"{address}?token={token}"
         self.websocket_endpoints = [WebsocketEndpoint(address, options={'ping_interval': address_info['data']['instanceServers'][0]['pingInterval'] / 2000})]
-        super().__init__(**kwargs)
-        if any([len(self.subscription[chan]) > 300 for chan in self.subscription]):
-            raise ValueError("Kucoin has a limit of 300 symbols per connection")
-        self.__reset()
-
-    def __reset(self):
-        self._l2_book = {}
-        self.seq_no = {}
 
     async def _candles(self, msg: dict, symbol: str, timestamp: float):
         """

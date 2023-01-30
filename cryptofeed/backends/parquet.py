@@ -117,7 +117,7 @@ class BookParquet(ParquetCallback):
     #     print(self._postponed)
 
 class BookDeltaParquet(ParquetCallback):
-    default_key = 'book-delta'
+    default_key = 'book_delta'
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -128,32 +128,15 @@ class BookDeltaParquet(ParquetCallback):
         data['exchange'] = book.exchange
         data['timestamp'] = int(book.timestamp * 1_000_000_000) if book.timestamp else 0
         data["receipt_timestamp"] = int(receipt_timestamp * 1_000_000_000)
-        # data['sequence_number'] = book.sequence_number
-        # print('delta', book.delta)
-        print('raw', book.raw)
-        if book.delta:
-            delta = book.delta
-            iters = {'bid': iter(delta['bid']), 'ask': iter(delta['ask'])}
-        else:
-            delta = book.book.to_dict()
-            iters = {'bid': iter(delta['bid'].items()), 'ask': iter(delta['ask'].items())}
-
-        while True:
-            data_copy = data.copy()
-            updates = 0
-            for side in ('bid', 'ask'):
-                update = next(iters[side], None)
-                try:
-                    data_copy[f'{side}_price'] = float(update[0])
-                    data_copy[f'{side}_size'] = float(update[1])
-                    updates += 1
-                except TypeError:
-                    data_copy[f'{side}_price'] = 0.
-                    data_copy[f'{side}_size'] = 0.
-            if not updates:
-                break
-
-            await self.queue.put(data_copy)
+        data['sequence_number'] = book.sequence_number
+        try:
+            data["bids"] = book.raw['b']
+            data["asks"] = book.raw['a']
+        except KeyError:
+            # Snapshot:
+            data["bids"] = book.raw['bids']
+            data["asks"] = book.raw['asks']
+        await self.queue.put(data)
 
 
 class TickerParquet(ParquetCallback, BackendCallback):
