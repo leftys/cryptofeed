@@ -272,7 +272,7 @@ class Binance(Feed, BinanceRestMixin):
             return True
 
     async def _snapshot(self, pair: str) -> None:
-        max_depth = self.max_depth if self.max_depth else 1000
+        max_depth = self.max_depth if self.max_depth else 5000
         if max_depth not in self.valid_depths:
             for d in self.valid_depths:
                 if d > max_depth:
