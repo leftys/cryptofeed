@@ -61,6 +61,7 @@ class Dumper:
 			if not self._column_data:
 				schema_fields = []
 				for name, value in msg.items():
+					pandas_t = None
 					if type(value) == int and value < 1e9:
 						t = pa.int64()  # TODO: can we safely use int32 with smarter type detection or explicitly?
 					elif type(value) == int:
@@ -81,12 +82,17 @@ class Dumper:
 						t = pa.string()  # TODO: can we safely use categories with smarter type detection or explicitly?
 					elif type(value) == bool:
 						t = pa.bool_()
+					elif type(value) == list: # assume its ob diffs in form of [[price, size], ...]]
+						t = pa.list_(pa.list_(pa.float64()))
+						pandas_t = object
 					elif value is None:
 						self._logger.error('None value in %s', name)
 						t = pa.int32()
 					else:
 						raise TypeError('Unknown data type', name, value, type(value), msg)
-					self._column_data[name] = np.empty(self.buffer_max_len, dtype = t.to_pandas_dtype())
+					if pandas_t is None:
+						pandas_t = t.to_pandas_dtype()
+					self._column_data[name] = np.empty(self.buffer_max_len, dtype = pandas_t)
 					schema_fields.append(pa.field(name, t))
 				self._schema = pa.schema(schema_fields)
 				# self._logger.info('Schema = %s', self._schema)
@@ -99,6 +105,8 @@ class Dumper:
 					# 	value = 1 if value == 'buy' else 0
 				if value is None:
 					value = -1
+				if type(value) == list and len(value) > 0 and len(value[0]) == 2:
+					value = [(float(x[0]), float(x[1])) for x in value]
 				try:
 					self._column_data[key][self._buffer_position] = value
 				except OverflowError:
