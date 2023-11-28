@@ -60,6 +60,8 @@ class Dumper:
 		with self._data_lock:
 			if not self._column_data:
 				schema_fields = []
+				# ob_diff_dtype = np.dtype('float64') #[('levels', [('price', 'f'), ('size', 'f')], (2,))]
+				# ob_diff_t = np.ndarray(shape=(1000,), dtype=ob_diff_dtype)
 				for name, value in msg.items():
 					pandas_t = None
 					if type(value) == int and value < 1e9:
@@ -106,7 +108,14 @@ class Dumper:
 				if value is None:
 					value = -1
 				if type(value) == list and len(value) > 0 and len(value[0]) == 2:
-					value = [(float(x[0]), float(x[1])) for x in value]
+					try:
+						value = [(float(x[0]), float(x[1])) for x in value]
+					except KeyError:
+						self._logger.error('KeyError in %s in %s', value, msg)
+					# print('val', value)
+					# value = np.asarray(value, dtype = ob_diff_dtype)
+					# value = np.asarray(value)
+					# print(value, value.dtype, value.shape)
 				try:
 					self._column_data[key][self._buffer_position] = value
 				except OverflowError:
@@ -240,9 +249,13 @@ class Dumper:
 				arrays = list(self._column_data.values())
 			else:
 				arrays = []
-				for array in self._column_data.values():
+				for key, array in self._column_data.items():
+					# if key == 'bids' or key == 'asks':
+					# 	array = array.astype(np.float64)
 					arrays.append(array[:self._buffer_position])
 
+			# print('col data', self._column_data)
+			# print('arr', arrays)
 			pa_table = pa.Table.from_arrays(
 				arrays = arrays,
 				schema = self._schema

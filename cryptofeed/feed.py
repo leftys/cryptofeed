@@ -254,6 +254,7 @@ class Feed(Exchange):
                 raise BidAskOverlapping(f"{self.id} - {data.symbol}: best bid {best_bid} >= best ask {best_ask}")
 
     async def callback(self, data_type, obj, receipt_timestamp):
+        # print(data_type, obj)
         for cb in self.callbacks[data_type]:
             await cb(obj, receipt_timestamp)
 
