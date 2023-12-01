@@ -94,7 +94,7 @@ setup(
         "rabbit": ["aio_pika", "pika"],
         "redis": ["hiredis", "aioredis>=2.0.0"],
         "zmq": ["pyzmq"],
-        "parquet": ["pyarrow>=7.0.0"],
+        "parquet": ["pyarrow>=7.0.0", "pandas"],
         "all": [
             "arctic",
             "google_cloud_pubsub>=2.4.1",

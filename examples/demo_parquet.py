@@ -21,7 +21,9 @@ def main():
     f = FeedHandler(config=config)
     # f.add_feed(Bitmex(channels=[FUNDING, L2_BOOK], symbols=['BTC-USD-PERP'], callbacks={FUNDING: FundingParquet(host=Parquet_HOST, port=Parquet_PORT), L2_BOOK: BookParquet(host=Parquet_HOST, port=Parquet_PORT)}))
     # f.add_feed(Binance(channels=[TRADES, L2_BOOK, CANDLES], symbols=['BTC-USDT', 'SOL-USDT'], callbacks={TRADES: TradeParquet(), L2_BOOK: [BookDeltaParquet()], CANDLES: CandlesParquet()}, max_depth = 5000))
-    f.add_feed(Coinmate(channels=[TRADES, L2_BOOK], symbols=['BTC-USDT', 'BTC-CZK'], callbacks={TRADES: TradeParquet(), L2_BOOK: [BookParquet()]}, max_depth = 1000))
+    # symbols = 'BTC-EUR,BTC-CZK,USDT-CZK,USDT-EUR,BTC-USDT,ETH-EUR,ETH-CZK,ETH-BTC,ADA-EUR,ADA-CZK,SOL-EUR,SOL-CZK,LTC-BTC,LTC-EUR,LTC-CZK,XRP-EUR,XRP-CZK,XRP-BTC'
+    # f.add_feed(Coinmate(channels=[TRADES, L2_BOOK], symbols=symbols.split(','), callbacks={TRADES: TradeParquet(), L2_BOOK: [BookParquet()], CANDLES: [CandlesParquet()]}, max_depth = 1000))
+    f.add_feed(Coinmate(channels=[TRADES, L2_BOOK], symbols=['BTC-USDT', 'BTC-CZK'], callbacks={TRADES: TradeParquet(), L2_BOOK: [BookParquet()], CANDLES: [CandlesParquet()]}, max_depth = 1000))
     # f.add_feed(Binance(channels=[TRADES, L2_BOOK, CANDLES], symbols=['BTC-USDT', 'ETH-BTC'], callbacks={TRADES: TradeParquet(), L2_BOOK: BookParquet(), CANDLES: CandlesParquet()}, max_depth = 20))
     # f.add_feed(Gateio(channels=[TRADES, L2_BOOK], symbols=['BTC-USDT', 'ETH-USDT'], callbacks={TRADES: TradeParquet(), L2_BOOK: [BookParquet()]}))
     # f.add_feed(Binance(channels=[TRADES], symbols=['BTC-USDT', 'ETH-USDT'], callbacks={TRADES: TradeParquet()}))
