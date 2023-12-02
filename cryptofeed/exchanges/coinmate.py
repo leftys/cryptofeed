@@ -28,7 +28,12 @@ LOG = logging.getLogger('feedhandler')
 
 class Coinmate(Feed):
     id = COINMATE
-    websocket_endpoints = [WebsocketEndpoint('wss://coinmate.io/api/websocket/channel', options = {'ping_interval': None, 'ping_timeout': None})]
+    websocket_endpoints = [
+        WebsocketEndpoint(
+            'wss://coinmate.io/api/websocket/channel',
+            options = {'ping_interval': None, 'ping_timeout': None}
+        )
+    ]
     rest_endpoints = [RestEndpoint('https://coinmate.io', routes=Routes(
         '/api/tradingPairs',
         l2book='/api/orderBook?currencyPair={}&groupByPriceLimit=false&Limit={}',
@@ -154,21 +159,13 @@ class Coinmate(Feed):
         if pair not in self._l2_book:
             await self._snapshot(exchange_pair)
 
-        delta = {BID: [], ASK: []}
+        # Coinmate only sends snapshots
+        self._l2_book[pair] = OrderBook(self.id, pair, max_depth=self.max_depth,
+            bids={Decimal(u['price']): Decimal(u['amount']) for u in msg['bids']},
+            asks={Decimal(u['price']): Decimal(u['amount']) for u in msg['asks']}
+        )
 
-        for s, side in (('bids', BID), ('asks', ASK)):
-            for update in msg[s]:
-                price = Decimal(update['price'])
-                amount = Decimal(update['amount'])
-                delta[side].append((price, amount))
-
-                if amount == 0:
-                    if price in self._l2_book[pair].book[side]:
-                        del self._l2_book[pair].book[side][price]
-                else:
-                    self._l2_book[pair].book[side][price] = amount
-
-        await self.book_callback(L2_BOOK, self._l2_book[pair], timestamp, timestamp=timestamp, raw=msg, delta=delta, sequence_number=self.last_update_id[pair])
+        await self.book_callback(L2_BOOK, self._l2_book[pair], timestamp, timestamp=timestamp, raw=msg, delta=None, sequence_number=self.last_update_id[pair])
 
     async def message_handler(self, msg: str, conn, timestamp: float):
         try:
