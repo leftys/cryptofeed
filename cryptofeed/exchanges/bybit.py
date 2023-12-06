@@ -27,20 +27,20 @@ LOG = logging.getLogger('feedhandler')
 class Bybit(Feed):
     id = BYBIT
     websocket_channels = {
-        L2_BOOK: 'orderBook_200.100ms',
-        TRADES: 'trade',
+        L2_BOOK: 'orderbook.50',
+        TRADES: 'publicTrade',
         FILLS: 'execution',
         ORDER_INFO: 'order',
         INDEX: 'instrument_info.100ms',
         OPEN_INTEREST: 'instrument_info.100ms',
         FUNDING: 'instrument_info.100ms',
-        CANDLES: 'klineV2',
+        CANDLES: 'kline',
         LIQUIDATIONS: 'liquidation'
     }
     websocket_endpoints = [
-        WebsocketEndpoint('wss://stream.bybit.com/realtime', channel_filter=(websocket_channels[L2_BOOK], websocket_channels[TRADES], websocket_channels[INDEX], websocket_channels[OPEN_INTEREST], websocket_channels[FUNDING], websocket_channels[CANDLES], websocket_channels[LIQUIDATIONS]), instrument_filter=('QUOTE', ('USD',)), sandbox='wss://stream-testnet.bybit.com/realtime', options={'compression': None}),
-        WebsocketEndpoint('wss://stream.bybit.com/realtime_public', channel_filter=(websocket_channels[L2_BOOK], websocket_channels[TRADES], websocket_channels[INDEX], websocket_channels[OPEN_INTEREST], websocket_channels[FUNDING], websocket_channels[CANDLES], websocket_channels[LIQUIDATIONS]), instrument_filter=('QUOTE', ('USDT',)), sandbox='wss://stream-testnet.bybit.com/realtime_public', options={'compression': None}),
-        WebsocketEndpoint('wss://stream.bybit.com/realtime_private', channel_filter=(websocket_channels[ORDER_INFO], websocket_channels[FILLS]), instrument_filter=('QUOTE', ('USDT',)), sandbox='wss://stream-testnet.bybit.com/realtime_private', options={'compression': None}),
+        WebsocketEndpoint('wss://stream.bybit.com/v5/public/linear', channel_filter=(websocket_channels[L2_BOOK], websocket_channels[TRADES], websocket_channels[INDEX], websocket_channels[OPEN_INTEREST], websocket_channels[FUNDING], websocket_channels[CANDLES], websocket_channels[LIQUIDATIONS]), instrument_filter=('QUOTE', ('USDT','USD')), sandbox='wss://stream-testnet.bybit.com/v5/public/linear', options={'compression': None}),
+        # WebsocketEndpoint('wss://stream.bybit.com/realtime_public', channel_filter=(websocket_channels[L2_BOOK], websocket_channels[TRADES], websocket_channels[INDEX], websocket_channels[OPEN_INTEREST], websocket_channels[FUNDING], websocket_channels[CANDLES], websocket_channels[LIQUIDATIONS]), instrument_filter=('QUOTE', ('USDT',)), sandbox='wss://stream-testnet.bybit.com/realtime_public', options={'compression': None}),
+        WebsocketEndpoint('wss://stream.bybit.com/v5/private', channel_filter=(websocket_channels[ORDER_INFO], websocket_channels[FILLS]), instrument_filter=('QUOTE', ('USDT',)), sandbox='wss://stream-testnet.bybit.com/v5/private', options={'compression': None}),
     ]
     rest_endpoints = [RestEndpoint('https://api.bybit.com', routes=Routes('/v2/public/symbols'))]
     valid_candle_intervals = {'1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '1d', '1w', '1M'}
@@ -109,7 +109,7 @@ class Bybit(Feed):
         }
         '''
         symbol = self.exchange_symbol_to_std_symbol(msg['topic'].split(".")[-1])
-        ts = msg['timestamp_e6'] / 1_000_000
+        ts = msg['ts'] / 1_000
 
         for entry in msg['data']:
             if self.candle_closed_only and not entry['confirm']:
@@ -147,11 +147,11 @@ class Bybit(Feed):
             self.id,
             self.exchange_symbol_to_std_symbol(msg['data']['symbol']),
             BUY if msg['data']['side'] == 'Buy' else SELL,
-            Decimal(msg['data']['qty']),
+            Decimal(msg['data']['size']),
             Decimal(msg['data']['price']),
             None,
             None,
-            self.timestamp_normalize(msg['data']['time']),
+            self.timestamp_normalize(msg['data']['updatedTime']),
             raw=msg
         )
         await self.callback(LIQUIDATIONS, liq, timestamp)
@@ -160,34 +160,38 @@ class Bybit(Feed):
 
         msg = json.loads(msg, parse_float=Decimal)
 
-        if "success" in msg:
-            if msg['success']:
-                if msg['request']['op'] == 'auth':
-                    LOG.debug("%s: Authenticated successful", conn.uuid)
-                elif msg['request']['op'] == 'subscribe':
-                    LOG.debug("%s: Subscribed to channels: %s", conn.uuid, msg['request']['args'])
+        try:
+            if "success" in msg:
+                if msg['success']:
+                    # LOG.info("Success from exchange %s", msg)
+                    if msg['op'] == 'auth':
+                        LOG.debug("%s: Authenticated successful", conn.uuid)
+                    elif msg['op'] == 'subscribe':
+                        LOG.debug("%s: Subscribed", conn.uuid)
+                    else:
+                        LOG.warning("%s: Unhandled 'successs' message received", conn.uuid)
                 else:
-                    LOG.warning("%s: Unhandled 'successs' message received", conn.uuid)
+                    LOG.error("%s: Error from exchange %s", conn.uuid, msg)
+            elif msg["topic"].startswith('publicTrade'):
+                await self._trade(msg, timestamp)
+            elif msg["topic"].startswith('orderbook'):
+                await self._book(msg, timestamp)
+            elif msg['topic'].startswith('liquidation'):
+                await self._liquidation(msg, timestamp)
+            elif "instrument_info" in msg["topic"]:
+                await self._instrument_info(msg, timestamp)
+            elif "order" in msg["topic"]:
+                await self._order(msg, timestamp)
+            elif "execution" in msg["topic"]:
+                await self._execution(msg, timestamp)
+            elif 'kline' in msg['topic'] or 'candle' in msg['topic']:
+                await self._candle(msg, timestamp)
+            # elif "position" in msg["topic"]:
+            #     await self._balances(msg, timestamp)
             else:
-                LOG.error("%s: Error from exchange %s", conn.uuid, msg)
-        elif msg["topic"].startswith('trade'):
-            await self._trade(msg, timestamp)
-        elif msg["topic"].startswith('orderBook'):
-            await self._book(msg, timestamp)
-        elif msg['topic'].startswith('liquidation'):
-            await self._liquidation(msg, timestamp)
-        elif "instrument_info" in msg["topic"]:
-            await self._instrument_info(msg, timestamp)
-        elif "order" in msg["topic"]:
-            await self._order(msg, timestamp)
-        elif "execution" in msg["topic"]:
-            await self._execution(msg, timestamp)
-        elif 'klineV2' in msg['topic'] or 'candle' in msg['topic']:
-            await self._candle(msg, timestamp)
-        # elif "position" in msg["topic"]:
-        #     await self._balances(msg, timestamp)
-        else:
-            LOG.warning("%s: Unhandled message type %s", conn.uuid, msg)
+                LOG.warning("%s: Unhandled message type %s", conn.uuid, msg)
+        except Exception:
+            LOG.exception('Weird message %s', msg)
 
     async def subscribe(self, connection: AsyncConnection):
         self.__reset(connection)
@@ -197,11 +201,12 @@ class Bybit(Feed):
                     sym = str_to_symbol(self.exchange_symbol_to_std_symbol(pair))
 
                     if self.exchange_channel_to_std(chan) == CANDLES:
-                        c = chan if sym.quote == 'USD' else 'candle'
+                        c = chan if sym.quote in ('USDT', 'USD') else 'kline'
                         sub = [f"{c}.{self.candle_interval_map[self.candle_interval]}.{pair}"]
                     else:
                         sub = [f"{chan}.{pair}"]
 
+                    LOG.info('Subscribing to public channel = %s', sub)
                     await connection.write(json.dumps({"op": "subscribe", "args": sub}))
             else:
                 await connection.write(json.dumps(
@@ -343,19 +348,19 @@ class Bybit(Feed):
         """
         data = msg['data']
         for trade in data:
-            if isinstance(trade['trade_time_ms'], str):
-                ts = int(trade['trade_time_ms'])
+            if isinstance(trade['T'], str):
+                ts = int(trade['T'])
             else:
-                ts = trade['trade_time_ms']
+                ts = trade['T']
 
             t = Trade(
                 self.id,
-                self.exchange_symbol_to_std_symbol(trade['symbol']),
-                BUY if trade['side'] == 'Buy' else SELL,
-                Decimal(trade['size']),
-                Decimal(trade['price']),
+                self.exchange_symbol_to_std_symbol(trade['s']),
+                BUY if trade['S'] == 'Buy' else SELL,
+                Decimal(trade['v']),
+                Decimal(trade['p']),
                 self.timestamp_normalize(ts),
-                id=trade['trade_id'],
+                id=trade['i'],
                 raw=trade
             )
             await self.callback(TRADES, t, timestamp)
@@ -370,32 +375,30 @@ class Bybit(Feed):
             delta = None
             self._l2_book[pair] = OrderBook(self.id, pair, max_depth=self.max_depth)
             # the USDT perpetual data is under the order_book key
-            if 'order_book' in data:
-                data = data['order_book']
-
-            for update in data:
-                side = BID if update['side'] == 'Buy' else ASK
-                self._l2_book[pair].book[side][Decimal(update['price'])] = Decimal(update['size'])
+            # if 'order_book' in data:
+            #     data = data['order_book']
+            for side, side_str in ((BID, 'b'), (ASK, 'a')):
+                side_data = data[side_str]
+                for update in side_data:
+                    self._l2_book[pair].book[side][Decimal(update[0])] = Decimal(update[1])
         else:
-            for delete in data['delete']:
-                side = BID if delete['side'] == 'Buy' else ASK
-                price = Decimal(delete['price'])
-                delta[side].append((price, 0))
-                del self._l2_book[pair].book[side][price]
+            for side, side_str in ((BID, 'b'), (ASK, 'a')):
+                side_data = data[side_str]
+                for level in side_data:
+                    price = Decimal(level[0])
+                    amount = Decimal(level[1])
+                    if amount == 0:
+                        delta[side].append((price, 0))
+                        del self._l2_book[pair].book[side][price]
+                    else:
+                        delta[side].append((price, amount))
+                        self._l2_book[pair].book[side][price] = amount
 
-            for utype in ('update', 'insert'):
-                for update in data[utype]:
-                    side = BID if update['side'] == 'Buy' else ASK
-                    price = Decimal(update['price'])
-                    amount = Decimal(update['size'])
-                    delta[side].append((price, amount))
-                    self._l2_book[pair].book[side][price] = amount
-
-        # timestamp is in microseconds
-        ts = msg['timestamp_e6']
+        # timestamp is in ms
+        ts = msg['ts']
         if isinstance(ts, str):
             ts = int(ts)
-        await self.book_callback(L2_BOOK, self._l2_book[pair], timestamp, timestamp=ts / 1000000, raw=msg, delta=delta)
+        await self.book_callback(L2_BOOK, self._l2_book[pair], timestamp, timestamp=ts / 1000, raw=data, delta=delta)
 
     async def _order(self, msg: dict, timestamp: float):
         """
@@ -499,12 +502,6 @@ class Bybit(Feed):
                 raw=entry
             )
             await self.callback(FILLS, f, timestamp)
-
-    # async def _balances(self, msg: dict, timestamp: float):
-    #    for i in range(len(msg['data'])):
-    #        data = msg['data'][i]
-    #        symbol = self.exchange_symbol_to_std_symbol(data['symbol'])
-    #        await self.callback(BALANCES, feed=self.id, symbol=symbol, data=data, receipt_timestamp=timestamp)
 
     async def authenticate(self, conn: AsyncConnection):
         if any(self.is_authenticated_channel(self.exchange_channel_to_std(chan)) for chan in conn.subscription):
