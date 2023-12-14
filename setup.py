@@ -84,6 +84,8 @@ setup(
         "order_book>=0.6.0",
         "aiomonitor>=0.4.5",
         "aioconsole>=0.5.1",
+        "pyjwt>=2.0.0",
+        "cryptography>=41",
     ],
     extras_require={
         "arctic": ["arctic", "pandas"],

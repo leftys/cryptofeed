@@ -113,3 +113,4 @@ ENV/
 
 fil-result
 *.spd
+/examples/demo_parquet.py

@@ -10,3 +10,5 @@ yapic.json>=1.7.3
 pyarrow>=9.0.0
 aiomonitor>=0.4.5
 aioconsole>=0.5.1
+pyjwt==2.8.0
+cryptography==41.0.7

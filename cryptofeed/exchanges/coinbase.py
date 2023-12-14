@@ -7,14 +7,17 @@ associated with this software.
 import asyncio
 import logging
 import time
+import datetime
 from decimal import Decimal
 from typing import Dict, Tuple
 from collections import defaultdict
 
+import jwt
+from cryptography.hazmat.primitives import serialization
 from yapic import json
 
 from cryptofeed.connection import AsyncConnection, RestEndpoint, Routes, WebsocketEndpoint
-from cryptofeed.defines import BID, ASK, BUY, COINBASE, L2_BOOK, L3_BOOK, SELL, TICKER, TRADES
+from cryptofeed.defines import BID, ASK, BUY, COINBASE, L2_BOOK, L3_BOOK, SELL, TICKER, TRADES, POSITIONS, TRANSACTIONS, BALANCES, ORDER_INFO, FILLS
 from cryptofeed.feed import Feed
 from cryptofeed.symbols import Symbol
 from cryptofeed.exchanges.mixins.coinbase_rest import CoinbaseRestMixin
@@ -26,13 +29,14 @@ LOG = logging.getLogger('feedhandler')
 
 class Coinbase(Feed, CoinbaseRestMixin):
     id = COINBASE
-    websocket_endpoints = [WebsocketEndpoint('wss://ws-feed.pro.coinbase.com', options={'compression': None})]
+    websocket_endpoints = [WebsocketEndpoint('wss://advanced-trade-ws.coinbase.com', options={'compression': None})]
+    # rest_endpoints = [RestEndpoint('https://api.coinbase.com', routes=Routes('/api/v3/brokerage/products', l3book='/api/v3/brokerage/product_book?level=3'))]
     rest_endpoints = [RestEndpoint('https://api.pro.coinbase.com', routes=Routes('/products', l3book='/products/{}/book?level=3'))]
 
     websocket_channels = {
         L2_BOOK: 'level2',
         L3_BOOK: 'full',
-        TRADES: 'matches',
+        TRADES: 'market_trades',
         TICKER: 'ticker',
     }
     request_limit = 10
@@ -162,35 +166,49 @@ class Coinbase(Feed, CoinbaseRestMixin):
         )
         await self.callback(TRADES, t, timestamp)
 
-    async def _pair_level2_snapshot(self, msg: dict, timestamp: float):
+    async def _trades(self, msg: dict, timestamp: float):
+        for trade in msg:
+            t = Trade(
+                self.id,
+                self.exchange_symbol_to_std_symbol(trade['product_id']),
+                SELL if trade['side'] == 'SELL' else BUY,
+                Decimal(trade['size']),
+                Decimal(trade['price']),
+                timestamp = self.timestamp_normalize(trade['time']),
+                id=str(trade['trade_id']),
+                raw=trade
+            )
+            await self.callback(TRADES, t, timestamp)
+
+    async def _pair_level2_snapshot(self, msg: dict, timestamp: float, origin_dt, seq_no):
         pair = self.exchange_symbol_to_std_symbol(msg['product_id'])
-        bids = {Decimal(price): Decimal(amount) for price, amount in msg['bids']}
-        asks = {Decimal(price): Decimal(amount) for price, amount in msg['asks']}
         if pair not in self._l2_book:
-            self._l2_book[pair] = OrderBook(self.id, pair, max_depth=self.max_depth, bids=bids, asks=asks)
-        else:
-            self._l2_book[pair].book.bids = bids
-            self._l2_book[pair].book.asks = asks
+            self._l2_book[pair] = OrderBook(self.id, pair, max_depth=self.max_depth, bids={}, asks={})
 
-        await self.book_callback(L2_BOOK, self._l2_book[pair], timestamp, raw=msg)
+        await self._pair_level2_update(msg, timestamp, origin_dt, seq_no)
 
-    async def _pair_level2_update(self, msg: dict, timestamp: float):
+    async def _pair_level2_update(self, msg: dict, timestamp: float, origin_dt, seq_no):
         pair = self.exchange_symbol_to_std_symbol(msg['product_id'])
-        ts = self.timestamp_normalize(msg['time'])
+        ts = self.timestamp_normalize(origin_dt)
+
         delta = {BID: [], ASK: []}
-        for side, price, amount in msg['changes']:
-            side = BID if side == 'buy' else ASK
+        for update_dict in msg['updates']:
+            side, _time, price, amount = update_dict.values()
+            side = BID if side == 'bid' else ASK
             price = Decimal(price)
             amount = Decimal(amount)
 
             if amount == 0:
-                del self._l2_book[pair].book[side][price]
-                delta[side].append((price, 0))
+                try:
+                    del self._l2_book[pair].book[side][price]
+                    delta[side].append((price, 0))
+                except KeyError:
+                    pass
             else:
                 self._l2_book[pair].book[side][price] = amount
                 delta[side].append((price, amount))
 
-        await self.book_callback(L2_BOOK, self._l2_book[pair], timestamp, timestamp=ts, raw=msg, delta=delta)
+        await self.book_callback(L2_BOOK, self._l2_book[pair], timestamp, timestamp=ts, raw=msg, delta=delta, sequence_number=seq_no)
 
     async def _book_snapshot(self, pairs: list):
         # Coinbase needs some time to send messages to us
@@ -346,37 +364,53 @@ class Coinbase(Feed, CoinbaseRestMixin):
 
                 self.seq_no[pair] = msg['sequence']
 
-        if 'type' in msg:
-            if msg['type'] == 'ticker':
+        if 'channel' in msg:
+            if msg['channel'] == 'ticker':
                 await self._ticker(msg, timestamp)
-            elif msg['type'] == 'match' or msg['type'] == 'last_match':
+            elif msg['channel'] == 'match' or msg['channel'] == 'last_match':
                 await self._book_update(msg, timestamp)
-            elif msg['type'] == 'snapshot':
-                await self._pair_level2_snapshot(msg, timestamp)
-            elif msg['type'] == 'l2update':
-                await self._pair_level2_update(msg, timestamp)
-            elif msg['type'] == 'open':
-                await self._open(msg, timestamp)
-            elif msg['type'] == 'done':
-                await self._done(msg, timestamp)
-            elif msg['type'] == 'change':
-                await self._change(msg, timestamp)
-            elif msg['type'] == 'received':
-                await self._received(msg, timestamp)
-            elif msg['type'] == 'activate':
+            elif msg['channel'] == 'l2_data' and msg['events'][0]['type'] == 'snapshot' and len(msg['events']) == 1:
+                await self._pair_level2_snapshot(msg['events'][0], timestamp, msg['timestamp'], msg['sequence_num'])
+            elif msg['channel'] == 'l2_data' and msg['events'][0]['type'] == 'update' and len(msg['events']) == 1:
+                await self._pair_level2_update(msg['events'][0], timestamp, msg['timestamp'], msg['sequence_num'])
+            elif msg['channel'] == 'market_trades' and msg['events'][0]['type'] == 'snapshot' and len(msg['events']) == 1:
                 pass
-            elif msg['type'] == 'subscriptions':
+            elif msg['channel'] == 'market_trades' and msg['events'][0]['type'] == 'update' and len(msg['events']) == 1:
+                await self._trades(msg['events'][0]['trades'], timestamp)
+            elif msg['channel'] == 'open':
+                await self._open(msg, timestamp)
+            elif msg['channel'] == 'done':
+                await self._done(msg, timestamp)
+            elif msg['channel'] == 'change':
+                await self._change(msg, timestamp)
+            elif msg['channel'] == 'received':
+                await self._received(msg, timestamp)
+            elif msg['channel'] == 'activate':
+                pass
+            elif msg['channel'] == 'subscriptions':
                 pass
             else:
-                LOG.warning("%s: Invalid message type %s", self.id, msg)
+                LOG.warning("%s: Invalid message channel %s", self.id, msg)
             # PERF perf_end(self.id, 'msg')
             # PERF perf_log(self.id, 'msg')
 
     async def subscribe(self, conn: AsyncConnection):
         self.__reset()
 
+        jwt_string = self._build_jwt(self.key_id, self.key_secret)
         for chan in self.subscription:
-            await conn.write(json.dumps({"type": "subscribe",
+            normalized_chan = self.exchange_channel_to_std(chan)
+            if self.is_authenticated_channel(normalized_chan):
+                data = json.dumps({"type": "subscribe",
+                            "product_ids": self.subscription[chan],
+                            "channel": chan,
+                            "jwt": jwt_string,
+                            "timestamp": int(time.time()),
+                            })
+                await conn.write(data)
+
+            else:
+                await conn.write(json.dumps({"type": "subscribe",
                                          "product_ids": self.subscription[chan],
                                          "channels": [chan]
                                          }))
@@ -384,3 +418,29 @@ class Coinbase(Feed, CoinbaseRestMixin):
         chan = self.std_channel_to_exchange(L3_BOOK)
         if chan in self.subscription:
             await self._book_snapshot(self.subscription[chan])
+
+    @classmethod
+    def is_authenticated_channel(cls, channel: str) -> bool:
+        return channel in (ORDER_INFO, FILLS, TRANSACTIONS, BALANCES, POSITIONS, L2_BOOK, L3_BOOK, TRADES)
+
+    @staticmethod
+    def _build_jwt(key_name, key_secret, service = 'public_websocket_api'):
+        private_key_bytes = key_secret.encode('utf-8')
+        private_key = serialization.load_pem_private_key(private_key_bytes, password=None)
+
+        jwt_payload = {
+            'sub': key_name,
+            'iss': "coinbase-cloud",
+            'nbf': int(time.time()),
+            'exp': int(time.time()) + 60,
+            'aud': [service],
+        }
+
+        jwt_token = jwt.encode(
+            jwt_payload,
+            private_key,
+            algorithm='ES256',
+            headers={'kid': key_name, 'nonce': str(int(time.time()))},
+        )
+
+        return jwt_token
