@@ -117,7 +117,7 @@ class BookParquet(ParquetCallback):
     #     print(self._postponed)
 
 class BookDeltaParquet(ParquetCallback):
-    default_key = 'book_delta'
+    default_key = 'book_delta_v2'
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

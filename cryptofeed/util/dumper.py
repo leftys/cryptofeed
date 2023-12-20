@@ -56,6 +56,7 @@ class Dumper:
 			self._dumping_start_time = None
 		if self._dumping_start_time is None:
 			self._dumping_start_time = time.time()
+		is_ob_diffs = 'bids' in msg and 'asks' in msg
 
 		with self._data_lock:
 			if not self._column_data:
@@ -85,8 +86,8 @@ class Dumper:
 					elif type(value) == bool:
 						t = pa.bool_()
 					elif type(value) == list: # assume its ob diffs in form of [[price, size], ...]]
-						t = pa.list_(pa.list_(pa.float64()))
-						pandas_t = object
+						# Those fields will be added below in `if is_ob_diffs:`
+						continue
 					elif value is None:
 						self._logger.error('None value in %s', name)
 						t = pa.int32()
@@ -96,8 +97,39 @@ class Dumper:
 						pandas_t = t.to_pandas_dtype()
 					self._column_data[name] = np.empty(self.buffer_max_len, dtype = pandas_t)
 					schema_fields.append(pa.field(name, t))
+
+				if is_ob_diffs:
+					# t = pa.binary(3)
+					t = pa.bool_()
+					self._column_data['side_is_bid'] = np.empty(self.buffer_max_len, dtype = t.to_pandas_dtype())
+					schema_fields.append(pa.field('side_is_bid', t))
+					t = pa.float64()
+					for name in ('price', 'size'):
+						self._column_data[name] = np.empty(self.buffer_max_len, dtype = t.to_pandas_dtype())
+						schema_fields.append(pa.field(name, t))
+
 				self._schema = pa.schema(schema_fields)
 				# self._logger.info('Schema = %s', self._schema)
+
+			if is_ob_diffs:
+				# Statically defined fields for order book diffs
+				for side in ('bids', 'asks'):
+					for level in msg[side]:
+						self._column_data['timestamp'][self._buffer_position] = msg['timestamp']
+						self._column_data['receipt_timestamp'][self._buffer_position] = msg['receipt_timestamp']
+						self._column_data['sequence_number'][self._buffer_position] = msg['sequence_number']
+						self._column_data['side_is_bid'][self._buffer_position] = side == 'bids'
+						self._column_data['price'][self._buffer_position] = float(level[0])
+						self._column_data['size'][self._buffer_position] = float(level[1])
+
+						self._buffer_position += 1
+						if self._store is None:
+							self._check_buffer_len()
+						if self._buffer_position == self.buffer_max_len:
+							self._data_lock.release()
+							self._flush()
+							self._data_lock.acquire()
+				return
 
 			for key, value in msg.items():
 				if type(value) == str and len(value) <= 19:
@@ -107,23 +139,26 @@ class Dumper:
 					# 	value = 1 if value == 'buy' else 0
 				if value is None:
 					value = -1
-				if type(value) == list and len(value) > 0 and len(value[0]) == 2:
-					try:
-						value = [(float(x[0]), float(x[1])) for x in value]
-					except KeyError:
-						self._logger.error('KeyError in %s in %s', value, msg)
-					# print('val', value)
-					# value = np.asarray(value, dtype = ob_diff_dtype)
-					# value = np.asarray(value)
-					# print(value, value.dtype, value.shape)
+				# if type(value) == list and len(value) > 0 and len(value[0]) == 2:
+				# 	try:
+				# 		value = [(float(x[0]), float(x[1])) for x in value]
+				# 	except KeyError:
+				# 		self._logger.error('KeyError in %s in %s', value, msg)
 				try:
 					self._column_data[key][self._buffer_position] = value
 				except OverflowError:
-					self._logger.error('Overflow in field = %s, value = %s', key, value)
+					self._logger.error('Overflow in field = {}, value = {}', key, value)
 
-			self._buffer_position += 1
+		self._buffer_position += 1
 
-		if self._store is None and self._automatically_set_buffer_len and self._buffer_position % 25 == 0:
+		if self._store is None:
+			self._check_buffer_len()
+
+		if self._buffer_position == self.buffer_max_len:
+			self._flush()
+
+	def _check_buffer_len(self) -> None:
+		if self._automatically_set_buffer_len and self._buffer_position % 25 == 0:
 			time_now = time.time()
 			since_start = time_now - self._dumping_start_time
 			messages_per_second = self._buffer_position / since_start
@@ -136,9 +171,6 @@ class Dumper:
 				self._set_buffer_max_len(3000, messages_per_second)
 			else:
 				self._set_buffer_max_len(10_000, messages_per_second)
-
-		if self._buffer_position == self.buffer_max_len:
-			self._flush()
 
 	def _set_buffer_max_len(self, new_len: int, messages_per_second: float) -> None:
 		if new_len != self._set_buffer_max_len:
