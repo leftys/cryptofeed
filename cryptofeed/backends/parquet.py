@@ -129,13 +129,18 @@ class BookDeltaParquet(ParquetCallback):
         data['timestamp'] = int(book.timestamp * 1_000_000_000) if book.timestamp else 0
         data["receipt_timestamp"] = int(receipt_timestamp * 1_000_000_000)
         data['sequence_number'] = book.sequence_number
+        if 'result' in book.raw:
+            # gateio
+            raw = book.raw['result']
+        else:
+            raw = book.raw
         try:
-            data["bids"] = book.raw['b']
-            data["asks"] = book.raw['a']
+            data["bids"] = raw['b']
+            data["asks"] = raw['a']
         except KeyError:
             # Snapshot:
-            data["bids"] = book.raw['bids']
-            data["asks"] = book.raw['asks']
+            data["bids"] = raw['bids']
+            data["asks"] = raw['asks']
         await self.queue.put(data)
 
 
