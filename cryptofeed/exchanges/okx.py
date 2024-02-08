@@ -104,6 +104,9 @@ class OKX(Feed, OKXRestMixin):
                     data = await self.http_conn.read(self.rest_endpoints[0].route('liquidations', sandbox=self.sandbox).format(instrument_type, status, uly))
                     data = json.loads(data, parse_float=Decimal)
                     timestamp = time.time()
+                    if not data['data']:
+                        LOG.info('%s: no liquidation data received for %s @ %s', self.id, pair, self.rest_endpoints[0].route('liquidations', sandbox=self.sandbox).format(instrument_type, status, uly))
+                        continue
                     if len(data['data'][0]['details']) == 0 or (len(data['data'][0]['details']) > 0 and last_update.get(pair) == data['data'][0]['details'][0]):
                         continue
                     for entry in data['data'][0]['details']:
@@ -263,7 +266,7 @@ class OKX(Feed, OKXRestMixin):
                 Decimal(update['fundingRate']),
                 None,
                 self.timestamp_normalize(int(update['fundingTime'])),
-                predicted_rate=Decimal(update['nextFundingRate']),
+                predicted_rate=Decimal(update['nextFundingRate']) if update['nextFundingRate'] != '' else None,
                 raw=update
             )
             await self.callback(FUNDING, f, timestamp)
