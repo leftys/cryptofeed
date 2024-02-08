@@ -9,6 +9,7 @@ from typing import Dict, Tuple
 from cryptofeed.connection import AsyncConnection, RestEndpoint, Routes, WebsocketEndpoint
 import logging
 from decimal import Decimal
+import asyncio
 
 from yapic import json
 
@@ -94,7 +95,16 @@ class AscendEX(Feed):
             if self.seq_no[pair] is None:
                 return
             if self.seq_no[pair] + 1 != sequence_number:
-                raise MissingSequenceNumber
+                # raise MissingSequenceNumber(self.seq_no[pair], sequence_number)
+                LOG.warning(
+                    "%s: Missing sequence number detected for pair %s. Received %d, expected %d",
+                    self.id,
+                    pair,
+                    sequence_number,
+                    self.seq_no[pair] + 1,
+                )
+            if self.seq_no[pair] + 1 > sequence_number:
+                return
             self.seq_no[pair] = sequence_number
 
         for side in ('bids', 'asks'):
@@ -145,6 +155,8 @@ class AscendEX(Feed):
             message = {'op': 'sub', 'ch': channel + ','.join(pairs)}
             await conn.write(json.dumps(message))
 
+        await asyncio.sleep(.5)
         for pair in l2_pairs:
             message = {"op": "req", "action": "depth-snapshot", "args": {"symbol": pair}}
             await conn.write(json.dumps(message))
+        await asyncio.sleep(.5)
