@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from aiohttp.client_reqrep import ClientResponse
 import requests
 import websockets
+import websockets.extensions.permessage_deflate as permessage_deflate
 import aiohttp
 from aiohttp.typedefs import StrOrURL
 from yapic import json as json_parser
@@ -298,6 +299,9 @@ class WSAsyncConn(AsyncConnection):
         self.address = address
         super().__init__(f'{conn_id}.ws.{self.conn_count}', authentication=authentication, subscription=subscription)
         self.ws_kwargs = kwargs
+        if 'compression' not in kwargs:
+            # Use compression by default to save CPU
+            self.ws_kwargs['compression'] = None
 
     @property
     def is_open(self) -> bool:
@@ -313,7 +317,12 @@ class WSAsyncConn(AsyncConnection):
             if self.authentication:
                 self.address, self.ws_kwargs = await self.authentication(self.address, self.ws_kwargs)
 
-            self.conn = await websockets.connect(self.address, **self.ws_kwargs)
+            # Doesnt help much
+            # deflate = permessage_deflate.ClientPerMessageDeflateFactory(
+            #     client_max_window_bits=11,
+            #     compress_settings={"memLevel": 4, "level": 1},
+            # )
+            self.conn = await websockets.connect(self.address, **self.ws_kwargs) # , extensions = [deflate])
         self.sent = 0
         self.received = 0
         self.last_message = None
