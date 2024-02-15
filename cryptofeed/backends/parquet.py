@@ -76,6 +76,7 @@ class BookParquet(ParquetCallback):
         self._saved = 0
         self._dropped = 0
         self._postponed = 0
+        self._last_postponed = None
 
     async def __call__(self, book, receipt_timestamp: float):
         data = {}
@@ -83,6 +84,14 @@ class BookParquet(ParquetCallback):
         data['exchange'] = book.exchange
         data['timestamp'] = int(book.timestamp * 1_000_000_000) if book.timestamp else 0
         data["receipt_timestamp"] = int(receipt_timestamp * 1_000_000_000)
+
+        if self._last_postponed:
+            since_postponed = data['receipt_timestamp'] - self._last_postponed['receipt_timestamp']
+            if since_postponed > self.snapshot_interval_ns / 2:
+                await self.queue.put(self._last_postponed)
+                self._saved += 1
+                self._last_receipt_timestamp = self._last_postponed['receipt_timestamp']
+                self._last_postponed = None
 
         within_snapshot_interval = data['receipt_timestamp'] - self.last_receipt_timestamp < self.snapshot_interval_ns
         within_quarter_snapshot_interval = data['receipt_timestamp'] - self.last_receipt_timestamp < self.snapshot_interval_ns // 4
@@ -109,6 +118,7 @@ class BookParquet(ParquetCallback):
             self.last_receipt_timestamp = data['receipt_timestamp']
         else:
             self._postponed += 1
+            self._last_postponed = data
 
     # async def stop(self):
     #     await super().stop()

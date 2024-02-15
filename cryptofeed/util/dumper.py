@@ -10,6 +10,7 @@ import random
 import gc
 
 import numpy as np
+import pandas as pd # preload pandas even though not needed in code here
 import pyarrow as pa
 import pyarrow.parquet as pq
 
