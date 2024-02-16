@@ -142,6 +142,8 @@ class BookDeltaParquet(ParquetCallback):
         if 'result' in book.raw:
             # gateio
             raw = book.raw['result']
+        elif 'changes' in book.raw:
+            raw = book.raw['changes']
         else:
             raw = book.raw
         try:
