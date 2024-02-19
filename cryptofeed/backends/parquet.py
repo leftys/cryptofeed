@@ -141,8 +141,8 @@ class BookDeltaParquet(ParquetCallback):
         data['sequence_number'] = book.sequence_number
         if 'result' in book.raw: # gateio
             raw = book.raw['result']
-        elif 'changes' in book.raw: # kucoin?
-            raw = book.raw['changes']
+        elif 'data' in book.raw: # kucoin?
+            raw = book.raw['data']['changes']
         elif 'updates' in book.raw: # coinbase
             data['bids'] = book.delta['bid']
             data['asks'] = book.delta['ask']
