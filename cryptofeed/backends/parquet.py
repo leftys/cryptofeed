@@ -139,20 +139,28 @@ class BookDeltaParquet(ParquetCallback):
         data['timestamp'] = int(book.timestamp * 1_000_000_000) if book.timestamp else 0
         data["receipt_timestamp"] = int(receipt_timestamp * 1_000_000_000)
         data['sequence_number'] = book.sequence_number
-        if 'result' in book.raw:
-            # gateio
+        if 'result' in book.raw: # gateio
             raw = book.raw['result']
-        elif 'changes' in book.raw:
+        elif 'changes' in book.raw: # kucoin?
             raw = book.raw['changes']
+        elif 'updates' in book.raw: # coinbase
+            data['bids'] = book.delta['bid']
+            data['asks'] = book.delta['ask']
+            await self.queue.put(data)
+            return
         else:
             raw = book.raw
         try:
             data["bids"] = raw['b']
             data["asks"] = raw['a']
         except KeyError:
-            # Snapshot:
-            data["bids"] = raw['bids']
-            data["asks"] = raw['asks']
+            try:
+                # Snapshot (on Binance?)
+                data["bids"] = raw['bids']
+                data["asks"] = raw['asks']
+            except KeyError:
+                print(raw)
+                raise
         await self.queue.put(data)
 
 
