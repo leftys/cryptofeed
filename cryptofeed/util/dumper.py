@@ -148,7 +148,7 @@ class Dumper:
 				try:
 					self._column_data[key][self._buffer_position] = value
 				except OverflowError:
-					self._logger.error('Overflow in field = {}, value = {}', key, value)
+					self._logger.error('Overflow in field = %s, value = %s for type %s', key, value, self.event_type)
 
 		self._buffer_position += 1
 
