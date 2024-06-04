@@ -63,6 +63,12 @@ class TradeParquet(ParquetCallback, BackendCallback):
 class FundingParquet(ParquetCallback, BackendCallback):
     default_key = 'funding'
 
+    async def write(self, data):
+        # Hide predicted_rate, which is some predicted settlement price / index price or something
+        if 'predicted_rate' in data:
+            data['index_price'] = data['predicted_rate']
+            del data['predicted_rate']
+        await self.queue.put(self._format_timestamps(data))
 
 class BookParquet(ParquetCallback):
     default_key = 'book'
