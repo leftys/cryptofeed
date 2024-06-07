@@ -109,9 +109,11 @@ class BookParquet(ParquetCallback):
         data['sequence_number'] = book.sequence_number
         for side_name, side in (('bid', book.book.bids), ('ask', book.book.asks)):
             depth = -1
-            for depth, (price, size) in enumerate(side.to_list(self.max_depth)):
+            for depth, (price, size) in enumerate(side.to_list()):
                 data[f'{side_name}_{depth}_price'] = float(price)
                 data[f'{side_name}_{depth}_size'] = float(size)
+                if depth == self.max_depth - 1:
+                    break
             for i in range(depth+1, self.max_depth):
                 # Those levels are not present
                 data[f'{side_name}_{i}_price'] = float('nan')
@@ -145,7 +147,12 @@ class BookDeltaParquet(ParquetCallback):
         data['timestamp'] = int(book.timestamp * 1_000_000_000) if book.timestamp else 0
         data["receipt_timestamp"] = int(receipt_timestamp * 1_000_000_000)
         data['sequence_number'] = book.sequence_number
-        if 'result' in book.raw: # gateio
+        if book.delta:
+            data['bids'] = book.delta['bid']
+            data['asks'] = book.delta['ask']
+            await self.queue.put(data)
+            return
+        elif 'result' in book.raw: # gateio
             raw = book.raw['result']
         elif 'data' in book.raw: # kucoin?
             raw = book.raw['data']['changes']
@@ -165,7 +172,7 @@ class BookDeltaParquet(ParquetCallback):
                 data["bids"] = raw['bids']
                 data["asks"] = raw['asks']
             except KeyError:
-                print(raw)
+                print(book.raw)
                 raise
         await self.queue.put(data)
 
