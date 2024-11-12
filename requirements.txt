@@ -1,5 +1,5 @@
 aiofile>=2.0.0
-aiohttp[speedups]==3.8.3
+aiohttp[speedups]==3.10.10
 cython
 order_book==0.6.0
 pyyaml
