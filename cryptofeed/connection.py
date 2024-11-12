@@ -1,5 +1,5 @@
 '''
-Copyright (C) 2017-2022 Bryant Moscon - bmoscon@gmail.com
+Copyright (C) 2017-2024 Bryant Moscon - bmoscon@gmail.com
 
 Please see the LICENSE file for the terms and conditions
 associated with this software.
@@ -17,7 +17,6 @@ from dataclasses import dataclass
 from aiohttp.client_reqrep import ClientResponse
 import requests
 import websockets
-import websockets.extensions.permessage_deflate as permessage_deflate
 import aiohttp
 from aiohttp.typedefs import StrOrURL
 from yapic import json as json_parser
@@ -43,6 +42,7 @@ class HTTPSync(Connection):
     def process_response(self, r, address, json=False, text=False, uuid=None):
         if self.raw_data_callback:
             self.raw_data_callback.sync_callback(r.text, time.time(), str(uuid), endpoint=address)
+
         r.raise_for_status()
         if json:
             return json_parser.loads(r.text, parse_float=Decimal)
@@ -152,6 +152,7 @@ class HTTPAsyncConn(AsyncConnection):
             self.conn = aiohttp.ClientSession()
             self.sent = 0
             self.received = 0
+            self.last_message = None
 
     async def read(self, address: str, header=None, params=None, return_headers=False, retry_count=0, retry_delay=60) -> str:
         if not self.is_open:
@@ -299,9 +300,6 @@ class WSAsyncConn(AsyncConnection):
         self.address = address
         super().__init__(f'{conn_id}.ws.{self.conn_count}', authentication=authentication, subscription=subscription)
         self.ws_kwargs = kwargs
-        if 'compression' not in kwargs:
-            # Disable compression by default to save CPU
-            self.ws_kwargs['compression'] = None
 
     @property
     def is_open(self) -> bool:
@@ -317,12 +315,7 @@ class WSAsyncConn(AsyncConnection):
             if self.authentication:
                 self.address, self.ws_kwargs = await self.authentication(self.address, self.ws_kwargs)
 
-            # Doesnt help much
-            # deflate = permessage_deflate.ClientPerMessageDeflateFactory(
-            #     client_max_window_bits=11,
-            #     compress_settings={"memLevel": 4, "level": 1},
-            # )
-            self.conn = await websockets.connect(self.address, **self.ws_kwargs) # , extensions = [deflate])
+            self.conn = await websockets.connect(self.address, **self.ws_kwargs)
         self.sent = 0
         self.received = 0
         self.last_message = None
@@ -364,7 +357,7 @@ class WebsocketEndpoint:
     authentication: bool = None
 
     def __post_init__(self):
-        defaults = {'ping_interval': 10, 'ping_timeout': None, 'max_size': 2**23, 'max_queue': None}
+        defaults = {'ping_interval': 10, 'ping_timeout': None, 'max_size': 2**23, 'max_queue': None, 'read_limit': 2**18}
         if self.options:
             defaults.update(self.options)
         self.options = defaults
