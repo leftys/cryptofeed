@@ -1,7 +1,7 @@
 aiofile>=2.0.0
-aiohttp[speedups]==3.10.10
+aiohttp[speedups]==3.9.4
 cython
-order_book==0.6.0
+order_book==0.6.1
 pyyaml
 requests>=2.18.4
 uvloop>=0.21.0
