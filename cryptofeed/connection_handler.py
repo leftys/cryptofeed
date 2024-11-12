@@ -41,10 +41,11 @@ class ConnectionHandler:
         loop.create_task(self._create_connection())
 
     async def _watcher(self):
+        LOG.debug("Watcher started with timeout %.0f", self.timeout)
         while self.conn.is_open and self.running:
             if self.conn.last_message:
                 if time.time() - self.conn.last_message > self.timeout:
-                    LOG.warning("%s: received no messages within timeout, restarting connection", self.conn.uuid)
+                    LOG.warning("%s: received no messages within timeout %.0f, restarting connection", self.timeout, self.conn.uuid)
                     await self.conn.close()
                     break
             await asyncio.sleep(self.timeout_interval)

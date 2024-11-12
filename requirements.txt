@@ -4,7 +4,7 @@ cython
 order_book==0.6.0
 pyyaml
 requests>=2.18.4
-uvloop>=0.17.0
+uvloop>=0.21.0
 websockets>=12.0
 yapic.json>=1.7.3
 pyarrow>=9.0.0

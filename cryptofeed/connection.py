@@ -300,7 +300,7 @@ class WSAsyncConn(AsyncConnection):
         super().__init__(f'{conn_id}.ws.{self.conn_count}', authentication=authentication, subscription=subscription)
         self.ws_kwargs = kwargs
         if 'compression' not in kwargs:
-            # Use compression by default to save CPU
+            # Disable compression by default to save CPU
             self.ws_kwargs['compression'] = None
 
     @property
