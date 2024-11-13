@@ -9,6 +9,8 @@ __pycache__/
 # C extensions
 *.so
 cryptofeed/types.c
+cryptofeed/backends/parquet.c
+cryptofeed/backends/parquet.html
 
 # Distribution / packaging
 .Python

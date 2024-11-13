@@ -1,9 +1,20 @@
+# cython: language_level=3
+# cython: boundscheck=True
+# cython: wraparound=True
+# cython: cdivision=True
+# cython: infer_types=True
+# cython: annotation_typing=True
+# cython: nonecheck=True
+# cython: initializedcheck=True
+
 import logging
 import collections
+from decimal import Decimal
 
 from cryptofeed.backends.backend import BackendCallback, BackendQueue
 from cryptofeed.util.dumper import Dumper
 
+from order_book import OrderBook, SortedDict
 
 LOG = logging.getLogger('feedhandler')
 
@@ -75,7 +86,7 @@ class BookParquet(ParquetCallback):
 
     def __init__(self, max_depth = 10, snapshot_interval_s = 0.1, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.max_depth = max_depth
+        self.max_depth: int = max_depth
         self.snapshot_interval_ns = snapshot_interval_s * 1_000_000_000
         self.last_book = None
         self.last_receipt_timestamp = 0
@@ -84,7 +95,7 @@ class BookParquet(ParquetCallback):
         self._postponed = 0
         self._last_postponed = None
 
-    async def __call__(self, book, receipt_timestamp: float):
+    async def __call__(self, book: OrderBook, receipt_timestamp: float):
         data = {}
         data['symbol'] = book.symbol
         data['exchange'] = book.exchange
@@ -107,9 +118,14 @@ class BookParquet(ParquetCallback):
             return
 
         data['sequence_number'] = book.sequence_number
+        price: Decimal
+        size: Decimal
+        side_name: str
+        side: SortedDict
         for side_name, side in (('bid', book.book.bids), ('ask', book.book.asks)):
-            depth = -1
-            for depth, (price, size) in enumerate(side.to_list()):
+            depth: int = -1
+            for price, size in side.to_list():
+                depth += 1
                 data[f'{side_name}_{depth}_price'] = float(price)
                 data[f'{side_name}_{depth}_size'] = float(size)
                 if depth == self.max_depth - 1:
@@ -140,7 +156,7 @@ class BookDeltaParquet(ParquetCallback):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    async def __call__(self, book, receipt_timestamp: float):
+    async def __call__(self, book: OrderBook, receipt_timestamp: float):
         data = {}
         data['symbol'] = book.symbol
         data['exchange'] = book.exchange

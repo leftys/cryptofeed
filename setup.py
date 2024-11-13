@@ -43,9 +43,13 @@ extension = Extension("cryptofeed.types", ["cryptofeed/types.pyx"],
                       extra_compile_args=extra_compile_args,
                       define_macros=define_macros)
 
+parquet = Extension("cryptofeed.backends.parquet", ["cryptofeed/backends/parquet.py"],
+                      extra_compile_args=extra_compile_args,
+                      define_macros=define_macros)
+
 setup(
     name="cryptofeed",
-    ext_modules=cythonize([extension], language_level=3, force=True),
+    ext_modules=cythonize([extension, parquet], language_level=3, force=True),
     version="2.4.1",
     author="Bryant Moscon",
     author_email="bmoscon@gmail.com",
