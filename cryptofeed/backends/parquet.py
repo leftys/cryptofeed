@@ -124,7 +124,7 @@ class BookParquet(ParquetCallback):
         side: SortedDict
         for side_name, side in (('bid', book.book.bids), ('ask', book.book.asks)):
             depth: int = -1
-            for price, size in side.to_list():
+            for price, size in side.to_list(20):
                 depth += 1
                 data[f'{side_name}_{depth}_price'] = float(price)
                 data[f'{side_name}_{depth}_size'] = float(size)
