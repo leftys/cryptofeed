@@ -45,7 +45,7 @@ class ConnectionHandler:
         while self.conn.is_open and self.running:
             if self.conn.last_message:
                 if time.time() - self.conn.last_message > self.timeout:
-                    LOG.warning("%s: received no messages within timeout %.0f, restarting connection", self.timeout, self.conn.uuid)
+                    LOG.warning("%s: received no messages within timeout %.0f, restarting connection", self.conn.uuid, self.timeout)
                     await self.conn.close()
                     break
             await asyncio.sleep(self.timeout_interval)
