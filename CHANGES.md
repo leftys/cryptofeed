@@ -1,6 +1,40 @@
 ## Changelog
 
-### 2.3.0
+### 2.4.1
+ * Bugfix: Handle empty nextFundingRate in OKX
+ * Bugfix: Handle null next_funding_time and estimated_rate in HuobiSwap funding
+ * Update: transitioned from Coinbase Pro (retired) to Coinbase Advanced Trade
+
+### 2.4.0 (2024-01-07)
+ * Update: Fix tests
+ * Update: Okcoin moved to v5 API used by OKX
+ * Bugfix: InfluxDB none type conversions
+ * New Exchange: GateIO Futures
+ * Bugfix: Fix instrument types in symbol parsing on Bitmex
+ * Bugfix: fix crash issue when init symbol data on Kraken Futures
+ * Updates: Remove closed exchanges, clean up feeds (update APIs, adjust symbol parsing, etc)
+
+### 2.3.2 (2023-05-27)
+ * Bugfix: Fix Socket backend
+ * Bugfix: Fix AUCTION symbol parsing on Coinbase
+ * Bugfix: Fix PERPETUAL symbol parsing on Phemex
+ * Bugfix: Fix PERPETUAL symbol parsing on Kraken Futures
+ * Feature: Access to all AIOKafka configuration options
+ * Feature: Use backend Queue for Kafka
+ * Feature: Add support for storing book snapshots in Redis as key-value
+ * Update: Switch from unmaintained aioredis to redis-py
+ * Bugfix: Correct value for Crypto.com Ask price
+ * Update: Remove cChardet dependency
+ * Feature: Binance TR support
+
+### 2.3.1 (2022-10-31)
+ * Bugfix: timestamp not reset correctly on reconnect
+ * Bugfix: Arctic backend failing to write Trades when trade type was not present in data
+ * Bugfix: Timestamp sometimes not present in Coinbase ticker updates
+ * Bugfix: Phemex, symbols parsing
+ * Bugfix: OKx - handle empty liquidations correctly
+
+### 2.3.0 (2022-09-04)
  * Bugfix: added list and str support to websocket_endpoint creation (allows more than 200 symbols on Binance)
  * Feature: Add support for OKx streaming candles
  * Bugfix: Binance Futures, double slash in open interest url
@@ -61,7 +95,7 @@
  * Update: Exchange name change OKEx -> OKX
  * Bugfix: OKX candle REST code was setting values incorrectly
  * Update: OKX now uses v5 for all connections (REST and WS). Update endpoints to new exchange name: okex.com -> okx.com
- 
+
 ### 2.2.0 (2021-02-16)
  * Feature: New exchange: Bit.com
  * Feature: Rework how exchanges that have multiple websocket endpoints are managed and configured.
@@ -88,7 +122,7 @@
  * Feature: Add ByBit sandbox endpoints.
  * Bugfix: Fix calculation in OrderInfo on Binance.
  * Feature: Support list of bootstrap servers for Kafka backend.
- * Feature: Add OrderInfo and Fills zmq callbacks 
+ * Feature: Add OrderInfo and Fills zmq callbacks
 
 ### 2.1.1 (2021-11-29)
  * Bugfix: Position data type missing side field.
