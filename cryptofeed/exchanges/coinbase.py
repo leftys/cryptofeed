@@ -1,5 +1,5 @@
 '''
-Copyright (C) 2017-2022 Bryant Moscon - bmoscon@gmail.com
+Copyright (C) 2017-2024 Bryant Moscon - bmoscon@gmail.com
 
 Please see the LICENSE file for the terms and conditions
 associated with this software.
@@ -9,10 +9,11 @@ import hashlib
 import hmac
 import logging
 import time
-import datetime
 from decimal import Decimal
 from typing import Dict, Tuple
 from collections import defaultdict
+import secrets
+import time
 
 import jwt
 from cryptography.hazmat.primitives import serialization
@@ -51,6 +52,45 @@ def get_private_parameters(config: Config, chan: str = None, product_ids_str: li
         return {'api_key': config["coinbase"]["key_id"], 'timestamp': timestamp, 'signature': signature}
 
 
+def get_rest_headers(config: dict, uri) -> dict:
+    return {
+        "Authorization": "Bearer " + build_jwt(config["coinbase"]["key_id"], config["coinbase"]["key_secret"], uri)
+    }
+
+
+def build_jwt(key_var, secret_var, uri=None) -> str:
+    try:
+        private_key_bytes = secret_var.encode("utf-8")
+        private_key = serialization.load_pem_private_key(
+            private_key_bytes, password=None
+        )
+    except ValueError as e:
+        # This handles errors like incorrect key format
+        raise Exception(
+            f"{e}\n"
+            "Are you sure you generated your key at https://cloud.coinbase.com/access/api ?"
+        )
+
+    jwt_data = {
+        "sub": key_var,
+        "iss": "cdp",
+        "nbf": int(time.time()),
+        "exp": int(time.time()) + 120,
+    }
+
+    if uri:
+        jwt_data["uri"] = uri
+
+    jwt_token = jwt.encode(
+        jwt_data,
+        private_key,
+        algorithm="ES256",
+        headers={"kid": key_var, "nonce": secrets.token_hex()},
+    )
+
+    return jwt_token
+
+
 class Coinbase(Feed, CoinbaseRestMixin):
     id = COINBASE
     websocket_endpoints = [WebsocketEndpoint('wss://advanced-trade-ws.coinbase.com', options={'compression': None})]
@@ -81,10 +121,13 @@ class Coinbase(Feed, CoinbaseRestMixin):
         config = Config(config)
         if 'coinbase' not in config or 'key_id' not in config['coinbase'] or 'key_secret' not in config['coinbase']:
             raise ValueError('You must provide key_id and key_secret in config to retrieve symbols from Coinbase.')
-        headers = get_private_parameters(config, rest_api=True, endpoint='products')
+        headers = get_rest_headers(config, 'GET api.coinbase.com/api/v3/brokerage/products')
+        headers['Content-Type'] = 'application/json'
+        headers['User-Agent'] = 'coinbase-advanced-py/1.8.1'
         return list(cls.symbol_mapping(refresh=refresh, headers=headers).keys())
 
     def __init__(self, callbacks=None, **kwargs):
+        self.symbols(kwargs.get('config'), refresh=True)
         super().__init__(callbacks=callbacks, **kwargs)
         self.__reset()
 
@@ -102,6 +145,7 @@ class Coinbase(Feed, CoinbaseRestMixin):
             'time': '2018-05-21T00:26:05.585000Z'
         }
         '''
+        print(msg)
         pair = self.exchange_symbol_to_std_symbol(msg['product_id'])
         ts = self.timestamp_normalize(msg['time'])
         order_type = 'market'
@@ -118,30 +162,19 @@ class Coinbase(Feed, CoinbaseRestMixin):
         )
         await self.callback(TRADES, t, timestamp)
 
-    async def _trades(self, msg: dict, timestamp: float):
-        for trade in msg:
-            t = Trade(
-                self.id,
-                self.exchange_symbol_to_std_symbol(trade['product_id']),
-                SELL if trade['side'] == 'SELL' else BUY,
-                Decimal(trade['size']),
-                Decimal(trade['price']),
-                timestamp = self.timestamp_normalize(trade['time']),
-                id=str(trade['trade_id']),
-                raw=trade
-            )
-            await self.callback(TRADES, t, timestamp)
-
-    async def _pair_level2_snapshot(self, msg: dict, timestamp: float, origin_dt, seq_no):
+    async def _pair_level2_snapshot(self, msg: dict, timestamp: float):
         pair = self.exchange_symbol_to_std_symbol(msg['product_id'])
         bids = {Decimal(update['price_level']): Decimal(update['new_quantity']) for update in msg['updates'] if
                 update['side'] == 'bid'}
         asks = {Decimal(update['price_level']): Decimal(update['new_quantity']) for update in msg['updates'] if
                 update['side'] == 'ask'}
         if pair not in self._l2_book:
-            self._l2_book[pair] = OrderBook(self.id, pair, max_depth=self.max_depth, bids={}, asks={})
+            self._l2_book[pair] = OrderBook(self.id, pair, max_depth=self.max_depth, bids=bids, asks=asks)
+        else:
+            self._l2_book[pair].book.bids = bids
+            self._l2_book[pair].book.asks = asks
 
-        await self._pair_level2_update(msg, timestamp, origin_dt, seq_no)
+        await self.book_callback(L2_BOOK, self._l2_book[pair], timestamp, raw=msg)
 
     async def _pair_level2_update(self, msg: dict, timestamp: float, ts: datetime):
         pair = self.exchange_symbol_to_std_symbol(msg['product_id'])
@@ -159,7 +192,7 @@ class Coinbase(Feed, CoinbaseRestMixin):
                 self._l2_book[pair].book[side][price] = amount
                 delta[side].append((price, amount))
 
-        await self.book_callback(L2_BOOK, self._l2_book[pair], timestamp, timestamp=ts, raw=msg, delta=delta, sequence_number=seq_no)
+        await self.book_callback(L2_BOOK, self._l2_book[pair], timestamp, timestamp=ts, raw=msg, delta=delta)
 
     async def message_handler(self, msg: str, conn: AsyncConnection, timestamp: float):
         # PERF perf_start(self.id, 'msg')
