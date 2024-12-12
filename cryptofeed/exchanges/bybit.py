@@ -16,7 +16,7 @@ from datetime import datetime as dt
 from yapic import json
 
 from cryptofeed.connection import AsyncConnection, RestEndpoint, Routes, WebsocketEndpoint
-from cryptofeed.defines import BID, ASK, BUY, BYBIT, CANCELLED, CANCELLING, CANDLES, FAILED, FILLED, FUNDING, L2_BOOK, LIMIT, LIQUIDATIONS, MAKER, MARKET, OPEN, PARTIAL, SELL, SUBMITTING, TAKER, TRADES, OPEN_INTEREST, INDEX, ORDER_INFO, FILLS, FUTURES, PERPETUAL
+from cryptofeed.defines import BID, ASK, BUY, BYBIT, CANCELLED, CANCELLING, CANDLES, FAILED, FILLED, FUNDING, L2_BOOK, LIMIT, LIQUIDATIONS, MAKER, MARKET, OPEN, PARTIAL, SELL, SUBMITTING, TAKER, TRADES, OPEN_INTEREST, INDEX, ORDER_INFO, FILLS, FUTURES, PERPETUAL, SPOT
 from cryptofeed.feed import Feed
 from cryptofeed.types import OrderBook, Trade, Index, OpenInterest, Funding, OrderInfo, Fill, Candle, Liquidation
 
@@ -42,7 +42,9 @@ class Bybit(Feed):
         # WebsocketEndpoint('wss://stream.bybit.com/realtime_public', channel_filter=(websocket_channels[L2_BOOK], websocket_channels[TRADES], websocket_channels[INDEX], websocket_channels[OPEN_INTEREST], websocket_channels[FUNDING], websocket_channels[CANDLES], websocket_channels[LIQUIDATIONS]), instrument_filter=('QUOTE', ('USDT',)), sandbox='wss://stream-testnet.bybit.com/realtime_public', options={'compression': None}),
         WebsocketEndpoint('wss://stream.bybit.com/v5/private', channel_filter=(websocket_channels[ORDER_INFO], websocket_channels[FILLS]), instrument_filter=('QUOTE', ('USDT',)), sandbox='wss://stream-testnet.bybit.com/v5/private', options={'compression': None}),
     ]
-    rest_endpoints = [RestEndpoint('https://api.bybit.com', routes=Routes('/v2/public/symbols'))]
+    rest_endpoints = [
+        RestEndpoint('https://api.bybit.com', routes=Routes(['/v5/market/instruments-info?&category=linear&status=Trading&limit=1000', '/v5/market/instruments-info?&category=spot&status=Trading&limit=1000']))
+    ]
     valid_candle_intervals = {'1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '1d', '1w', '1M'}
     candle_interval_map = {'1m': '1', '3m': '3', '5m': '5', '15m': '15', '30m': '30', '1h': '60', '2h': '120', '4h': '240', '6h': '360', '1d': 'D', '1w': 'W', '1M': 'M'}
 
@@ -58,23 +60,46 @@ class Bybit(Feed):
         ret = {}
         info = defaultdict(dict)
 
-        # PERPETUAL & FUTURES
-        for symbol in data['result']:
-            base = symbol['base_currency']
-            quote = symbol['quote_currency']
+        for msg in data:
+            if isinstance(msg['result'], dict):
+                for symbol in msg['result']['list']:
 
-            stype = PERPETUAL
-            expiry = None
-            if not symbol['name'].endswith(quote):
-                stype = FUTURES
-                year = symbol['name'].replace(base + quote, '')[-2:]
-                expiry = year + symbol['alias'].replace(base + quote, '')[-4:]
+                    if 'contractType' not in symbol:
+                        stype = SPOT
+                    elif 'contractType' in symbol:
+                        if symbol['contractType'] == 'LinearPerpetual':
+                            stype = PERPETUAL
+                        elif symbol['contractType'] == 'LinearFutures':
+                            stype = FUTURES
 
-            s = Symbol(base, quote, type=stype, expiry_date=expiry)
+                    base = symbol['baseCoin']
+                    quote = symbol['quoteCoin']
 
-            ret[s.normalized] = symbol['name']
-            info['tick_size'][s.normalized] = symbol['price_filter']['tick_size']
-            info['instrument_type'][s.normalized] = stype
+                    expiry = None
+
+                    if stype is FUTURES:
+                        if not symbol['symbol'].endswith(quote):
+                            # linear futures
+                            if '-' in symbol['symbol']:
+                                expiry = symbol['symbol'].split('-')[-1]
+
+                    s = Symbol(base, quote, type=stype, expiry_date=expiry)
+
+                    # Bybit spot and USDT perps share the same symbol name, so
+                    # here it is formed using the base and quote coins, separated
+                    # by a slash. This is consistent with the UI.
+                    # https://bybit-exchange.github.io/docs/v5/enum#symbol
+                    if stype == SPOT:
+                        ret[s.normalized] = f'{base}/{quote}'
+                    elif stype == PERPETUAL and symbol['symbol'].endswith('PERP'):
+                        ret[s.normalized] = symbol['symbol']
+                    elif stype == PERPETUAL:
+                        ret[s.normalized] = f'{base}{quote}'
+                    elif stype == FUTURES:
+                        ret[s.normalized] = symbol['symbol']
+
+                    info['tick_size'][s.normalized] = Decimal(symbol['priceFilter']['tickSize'])
+                    info['instrument_type'][s.normalized] = stype
 
         return ret, info
 
@@ -377,11 +402,13 @@ class Bybit(Feed):
             # the USDT perpetual data is under the order_book key
             # if 'order_book' in data:
             #     data = data['order_book']
+            seq_no = data['seq']
             for side, side_str in ((BID, 'b'), (ASK, 'a')):
                 side_data = data[side_str]
                 for update in side_data:
                     self._l2_book[pair].book[side][Decimal(update[0])] = Decimal(update[1])
         else:
+            seq_no = data['seq']
             for side, side_str in ((BID, 'b'), (ASK, 'a')):
                 side_data = data[side_str]
                 for level in side_data:
@@ -398,7 +425,7 @@ class Bybit(Feed):
         ts = msg['ts']
         if isinstance(ts, str):
             ts = int(ts)
-        await self.book_callback(L2_BOOK, self._l2_book[pair], timestamp, timestamp=ts / 1000, raw=data, delta=delta)
+        await self.book_callback(L2_BOOK, self._l2_book[pair], timestamp, timestamp=ts / 1000, sequence_number=seq_no, raw=data, delta=delta)
 
     async def _order(self, msg: dict, timestamp: float):
         """
