@@ -227,6 +227,7 @@ class KuCoin(Feed):
             return
 
         self.seq_no[symbol] = data['sequenceEnd']
+        ts = data['time'] / 1000
 
         delta = {BID: [], ASK: []}
         for s, side in (('bids', BID), ('asks', ASK)):
@@ -242,7 +243,7 @@ class KuCoin(Feed):
                     self._l2_book[symbol].book[side][price] = amount
                     delta[side].append((price, amount))
 
-        await self.book_callback(L2_BOOK, self._l2_book[symbol], timestamp, delta=delta, raw=msg, sequence_number=data['sequenceEnd'])
+        await self.book_callback(L2_BOOK, self._l2_book[symbol], timestamp, delta=delta, timestamp=ts, raw=msg, sequence_number=data['sequenceEnd'])
 
     async def message_handler(self, msg: str, conn, timestamp: float):
         msg = json.loads(msg, parse_float=Decimal)
