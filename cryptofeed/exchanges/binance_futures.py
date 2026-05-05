@@ -6,12 +6,12 @@ associated with this software.
 '''
 from decimal import Decimal
 import logging
-from typing import Tuple, Dict
+from typing import Tuple, Dict, Union
 
 from yapic import json
 
 from cryptofeed.connection import AsyncConnection, HTTPPoll, RestEndpoint, Routes, WebsocketEndpoint
-from cryptofeed.defines import BALANCES, BINANCE_FUTURES, BUY, FUNDING, LIMIT, LIQUIDATIONS, MARKET, OPEN_INTEREST, ORDER_INFO, POSITIONS, SELL
+from cryptofeed.defines import BALANCES, BINANCE_FUTURES, BUY, CANDLES, FUNDING, L2_BOOK, LIMIT, LIQUIDATIONS, MARKET, OPEN_INTEREST, ORDER_INFO, POSITIONS, SELL, TICKER, TRADES
 from cryptofeed.exchanges.binance import Binance
 from cryptofeed.exchanges.mixins.binance_rest import BinanceFuturesRestMixin
 from cryptofeed.types import Balance, OpenInterest, OrderInfo, Position
@@ -21,7 +21,11 @@ LOG = logging.getLogger('feedhandler')
 
 class BinanceFutures(Binance, BinanceFuturesRestMixin):
     id = BINANCE_FUTURES
-    websocket_endpoints = [WebsocketEndpoint('wss://fstream.binance.com', sandbox='wss://stream.binancefuture.com', options={'compression': None})]
+    websocket_endpoints = [
+        WebsocketEndpoint('wss://fstream.binance.com/public', sandbox='wss://stream.binancefuture.com/public', options={'compression': None}),
+        WebsocketEndpoint('wss://fstream.binance.com/market', sandbox='wss://stream.binancefuture.com/market', options={'compression': None}),
+        WebsocketEndpoint('wss://fstream.binance.com/private', sandbox='wss://stream.binancefuture.com/private', options={'compression': None})
+    ]
     rest_endpoints = [RestEndpoint('https://fapi.binance.com', sandbox='https://testnet.binancefuture.com', routes=Routes('/fapi/v1/exchangeInfo', l2book='/fapi/v1/depth?symbol={}&limit={}', authentication='/fapi/v1/listenKey', open_interest='/fapi/v1/openInterest?symbol={}'))]
 
     valid_depths = [5, 10, 20, 50, 100, 500, 1000]
@@ -52,6 +56,70 @@ class BinanceFutures(Binance, BinanceFuturesRestMixin):
         """
         super().__init__(**kwargs)
         self.open_interest_interval = open_interest_interval
+
+    def _address(self) -> Union[str, Dict]:
+        """
+        Route streams to correct endpoints: /public for high-frequency data,
+        /market for regular market data, /private for user data
+        """
+        if self.requires_authentication:
+            listen_key = self._generate_token()
+            address = self.websocket_endpoints[2].get_address(sandbox=self.sandbox)
+            address += '/ws/' + listen_key
+            return address
+
+        public_base = self.websocket_endpoints[0].get_address(sandbox=self.sandbox)
+        market_base = self.websocket_endpoints[1].get_address(sandbox=self.sandbox)
+        
+        public_subs = []
+        market_subs = []
+
+        for chan in self.subscription:
+            normalized_chan = self.exchange_channel_to_std(chan)
+            if normalized_chan == OPEN_INTEREST:
+                continue
+            if self.is_authenticated_channel(normalized_chan):
+                continue
+
+            stream = chan
+            if normalized_chan == CANDLES:
+                stream = f"{chan}{self.candle_interval}"
+            elif normalized_chan == L2_BOOK:
+                stream = f"{chan}@{self.depth_interval}"
+
+            for pair in self.subscription[chan]:
+                pair_lower = pair.lower()
+                sub_str = f"{pair_lower}@{stream}"
+                
+                if normalized_chan in (L2_BOOK, TICKER):
+                    public_subs.append(sub_str)
+                else:
+                    market_subs.append(sub_str)
+
+        addresses = {}
+        if public_subs:
+            if len(public_subs) < 200:
+                addresses['public'] = public_base + '/stream?streams=' + '/'.join(public_subs)
+            else:
+                def split_list(_list: list, n: int):
+                    for i in range(0, len(_list), n):
+                        yield _list[i:i + n]
+                addresses.update({f'public_{i}': public_base + '/stream?streams=' + '/'.join(chunk) 
+                                  for i, chunk in enumerate(split_list(public_subs, 200))})
+        
+        if market_subs:
+            if len(market_subs) < 200:
+                addresses['market'] = market_base + '/stream?streams=' + '/'.join(market_subs)
+            else:
+                def split_list(_list: list, n: int):
+                    for i in range(0, len(_list), n):
+                        yield _list[i:i + n]
+                addresses.update({f'market_{i}': market_base + '/stream?streams=' + '/'.join(chunk) 
+                                  for i, chunk in enumerate(split_list(market_subs, 200))})
+
+        if len(addresses) == 1:
+            return list(addresses.values())[0]
+        return addresses
 
     def _connect_rest(self):
         ret = []
