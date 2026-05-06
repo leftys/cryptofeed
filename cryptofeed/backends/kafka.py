@@ -35,7 +35,7 @@ class KafkaCallback:
 
     async def __connect(self):
         if not self.producer:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             self.producer = AIOKafkaProducer(acks=self.acks,
                                              loop=loop,
                                              bootstrap_servers=f'{self.bootstrap}:{self.port}' if isinstance(self.bootstrap, str) else self.bootstrap,

@@ -102,7 +102,7 @@ class FeedHandler:
 
         if self.running:
             if loop is None:
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
 
             self.feeds[-1].start(loop)
 
@@ -134,7 +134,11 @@ class FeedHandler:
             a custom exception handler for asyncio
         """
         self.running = True
-        loop = asyncio.get_event_loop()
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
         # Good to enable when debugging or without code change: export PYTHONASYNCIODEBUG=1)
         # loop.set_debug(True)
 
@@ -175,7 +179,7 @@ class FeedHandler:
     def _stop(self, loop=None):
         self.running = False
         if not loop:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
 
         LOG.info('FH: shutdown connections handlers in feeds')
         for feed in self.feeds:
@@ -210,7 +214,7 @@ class FeedHandler:
     def close(self, loop=None):
         """Stop the asynchronous generators and close the event loop."""
         if not loop:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
 
         LOG.info('FH: stop the AsyncIO loop')
         loop.stop()

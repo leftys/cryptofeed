@@ -43,5 +43,5 @@ class NBBO(Callback):
         if self.is_async:
             await self.callback(book.symbol, bid['price'], bid['size'], ask['price'], ask['size'], bid_feed, ask_feed)
         else:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, self.callback, book.symbol, bid['price'], bid['size'], ask['price'], ask['size'], bid_feed, ask_feed)

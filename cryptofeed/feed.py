@@ -207,7 +207,10 @@ class Feed(Exchange):
             if limit and count > limit:
                 ret.extend(limit_sub(filtered_sub, limit, auth, endpoint.options))
             else:
-                if isinstance(addr, list):
+                if isinstance(addr, dict):
+                    for add in addr.values():
+                        ret.append((WSAsyncConn(add, self.id, authentication=auth, subscription=filtered_sub, **endpoint.options), self.subscribe, self.message_handler, self.authenticate))
+                elif isinstance(addr, list):
                     for add in addr:
                         ret.append((WSAsyncConn(add, self.id, authentication=auth, subscription=filtered_sub, **endpoint.options), self.subscribe, self.message_handler, self.authenticate))
                 else:
